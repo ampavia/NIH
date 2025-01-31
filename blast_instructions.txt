@@ -14,10 +14,6 @@ blastp -query Cath_query.pep.fa \
 -outfmt 6 \
 -num_threads 24 \
 -out known_cath_genes.pep.blast6
-#sort post blast Make sure the file is sorted based on query and best hits (here bitscore > evalue > perc identity):
-export LC_ALL=C LC_LANG=C; sort -k1,1 -k12,12gr -k11,11g -k3,3gr query.fa.blastn.34708929.tsv > sorted_query.fa.blastn.34708929.tsv
-#get top 5 per query
-for next in $(cut -f1 sorted_query.fa.blastn.34708929.tsv | sort -u); do grep -w -m 1 "$next" sorted_query.fa.blastn.34708929.tsv; done > top_query.fa.blastn.34708929.tsv
 
 ######## nucleotide blast
 #Make DB inside directory with pathway query genes
@@ -42,3 +38,8 @@ blastn -query kratom_pathway_genes_from_allwin_updated_15jan25.fasta \
 ###
 #column names are:
 #qseqid	sseqid	pident	length	mismatch	gapopen	qstart	qend	sstart	send	evalue	bitscore
+
+#sort post blast Make sure the file is sorted based on query and best hits (here bitscore > evalue > perc identity):
+export LC_ALL=C LC_LANG=C; sort -k1,1 -k12,12gr -k11,11g -k3,3gr query.fa.blastn.34708929.tsv > sorted_query.fa.blastn.34708929.tsv
+#get top 5 per query
+for next in $(cut -f1 sorted_query.fa.blastn.34708929.tsv | sort -u); do grep -w -m 1 "$next" sorted_query.fa.blastn.34708929.tsv; done > top_query.fa.blastn.34708929.tsv
