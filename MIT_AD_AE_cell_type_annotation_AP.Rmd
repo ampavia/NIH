@@ -1,0 +1,125 @@
+---
+title: "MIT_AD_AE_cell_type_clusters"
+author: "Anne Pavia"
+date: "2025-01-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(Seurat) 
+library(readxl)
+library(RColorBrewer)
+library(viridis)
+library(svglite) 
+library(patchwork)
+library(cowplot)
+library(ggpubr)
+library(ape)
+```
+
+
+#Load Seurat object
+```{r}
+stem.combined <- readRDS("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_cleaned_integrated_seurat_09jan25.rds")
+```
+
+# Create Matrices
+## Find Markers 
+```{r}
+DefaultAssay(stem.combined) <- "RNA"
+stem.combined = JoinLayers(stem.combined)
+stem.combined.markers <- FindAllMarkers(stem.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+
+stem.combined.markers <- stem.combined.markers %>% group_by(cluster) %>% 
+  rename(kratom.id = gene)
+head(stem.combined.markers)
+```
+
+## Find Average Expression
+```{r}
+DefaultAssay(stem.combined) <- "RNA"
+
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(stem.combined)
+Idents(stem.combined) <- gsub(pattern = " ", replacement = "_", x = Idents(stem.combined))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(stem.combined) <- orig.levels
+cluster.averages <- AverageExpression(stem.combined, return.seurat = TRUE)
+cluster.averages
+
+# How can I extract expression matrix for all Cluster 0 cells (perhaps, to load into another package)
+#cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ])
+#Warning: The `slot` argument of `GetAssayData()` is deprecated as of SeuratObject 5.0.0. Used the `layer` argument instead.
+#write.table(cluster_avg.data, file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_clean_integrated_cluster_avg_normalized_counts_14jan25.txt", sep = "\t", quote = FALSE)
+```
+
+# Look at Marker Genes
+```{r}
+gene_info <- read_tsv("/scratch/ac05869/nih/marker_genes/nih_marker_list.tsv") %>%
+                        rownames_to_column() #arabidopsis marker gene information, such as tissue specificity and gene type
+head(gene_info)
+dim(gene_info)
+
+marker_genes <- read.table(file = "/scratch/ac05869/nih/marker_genes/top_2_marker_genes_kratom.out", col.names = c("Locus", "kratom.id", "pident",	"length",	"mismatch",	"gapopen",	"qstart",	"qend",	"sstart",	"send",	"evalue",	"bitscore"))
+head(marker_genes)
+dim(marker_genes)
+
+#Remove transcript syntax
+marker_genes$kratom.id <- gsub("\\.\\d+$", "", marker_genes$kratom.id)
+marker_genes$Locus <- gsub("\\.\\d+$", "", marker_genes$Locus)
+
+#change underscores to 
+
+#join marker genes with gene annotation
+markers <- inner_join(marker_genes, gene_info, by = "Locus") %>%
+       select(rowname, Locus, kratom.id, Symbol, Full_name, Tissue_Type, Function)
+head(markers)
+dim(markers)
+
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(stem.combined)
+Idents(stem.combined) <- gsub(pattern = " ", replacement = "_", x = Idents(stem.combined))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(stem.combined) <- orig.levels
+cluster.averages <- AverageExpression(stem.combined, return.seurat = TRUE)
+cluster.averages
+```
+
+# Merge marker genes with cluster markers from seurat
+```{r}
+clusters_and_markers <- inner_join(stem.combined.markers, markers, by = "kratom.id")
+head(clusters_and_markers)
+```
+
+#Make dot plot
+```{r}
+DefaultAssay(stem.combined) <- "RNA"
+
+#join marker genes with gene annotation
+markers <- inner_join(marker_genes, gene_info, by = "Locus") %>%
+       select(Locus, kratom.id, Symbol, Full_name, Tissue_Type, Function)
+head(markers)
+dim(markers)
+
+#plot only genes with expression
+dotplot_data <- DotPlot(stem.combined, features = unique(markers$kratom.id)$data
+unique(markers$kratom.id) #Count if any duplicate gene ID's
+head(dotplot_data)
+
+dotplot_data %>% 
+  inner_join(markers %>% 
+               distinct(kratom.id, .keep_all = T), by = c("features.plot"="kratom.id")) %>%
+  mutate(tag = paste(Symbol, features.plot)) %>%
+  ggplot(aes(x = id, y = tag,)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Marker",
+       x = "Cluster") + 
+  theme_classic()
+
+ggsave("/scratch/ac05869/nih/marker_genes/MIT_AD_AE_cluster_anno_23jan25.png", height = 12, width = 10, bg = "white")
+```
+

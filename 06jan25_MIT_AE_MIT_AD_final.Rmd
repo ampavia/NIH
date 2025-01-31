@@ -1,0 +1,755 @@
+---
+title: "Kratom stem single cell analysis with mitr_v1.asm"
+author: "Anne Pavia"
+output:
+  html_document:
+    df_print: paged
+#Notes: MIT_AD and MIT_AE (reps 1 and 2); protoplasts 2,200 cells/ul; PIPseq v4.0Plus kit, pipseeker-v3.3.0-linux; #EM algorithm using mitr_v1.asm
+
+#Started 06jan25 with Seurat v5
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(Seurat) 
+library(readxl)
+library(RColorBrewer)
+library(viridis)
+library(svglite) 
+library(patchwork)
+library(cowplot)
+library(ggpubr)
+```
+
+# Load Data
+
+```{r}
+#Note that you have to gzip these files, as Seurat expects them to be zipped to match CellRangers output (zipped in CellRanger output from v3 or higher). STARsolo did not gzip these by default
+
+MIT_AE_raw <- Read10X(data.dir = "/scratch/ac05869/nih/kratom/star_results/MIT_AE/MIT_AE_Solo.out/GeneFull/raw/data_for_R/EM_EmptyDrops_Combined")
+```
+
+
+```{r}
+MIT_AD_raw <- Read10X(data.dir = "/scratch/ac05869/nih/kratom/star_results/MIT_AD/MIT_AD_Solo.out/GeneFull/raw/data_for_R/EM_EmptyDrops_Combined")
+```
+
+# Create Seurat Objects
+
+```{r}
+AE <- CreateSeuratObject(counts = MIT_AE_raw, min.cells = 3, min.features = 50,
+                         project = "MIT_AE")
+AE  #check how many cells/genes starting with; 64502 features (genes) across 12363 samples (cells) within 1 assay
+
+AD <- CreateSeuratObject(counts = MIT_AD_raw, min.cells = 3, min.features = 50,
+                         project = "MIT_AD")
+
+AD #cells/genes starting: 64240 features(genes) across 12845 samples(cells) within 1 assay
+
+
+```
+# Data QC
+## Notes 
+```{r}
+#You may or may not be able to do organellar filtering based on what you aligned to. In this case, I don't have organellar genome assemblies so i skip
+```
+
+## Plotting QC Values
+
+```{r}
+VlnPlot(AD, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2, raster = FALSE)
+#ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_violin_plots.png", height = 8, width = 8, bg = "white")
+
+VlnPlot(AE, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2, raster = FALSE)
+#ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AE_violin_plots.png", height = 8, width = 8, bg = "white")
+#nCount = number of UMIs per cell
+#nFeature = number of Genes per cell
+```
+
+## Plotting for Cutoff Selection
+
+```{r}
+#blank data frame/plot for helping to organize plots 
+
+blank <- data.frame(
+  x = 1:10000,
+  y = 1:10000
+) %>% 
+  ggplot(aes(x = x, y = y)) +
+  theme_void()
+```
+
+```{r}
+#You should generate a plot with test values and adjust based on the dataset!
+#I plot the full dataset and the organellar filtered dataset to be able to visualize how the organellar filtering impacts the data
+
+AD_scatter <- AD@meta.data %>% 
+  ggplot(aes(x = nCount_RNA, y = nFeature_RNA)) +
+  geom_point() + ggtitle("MIT_AD") +
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_hline(yintercept=500, color = "red") + #Set minimum number of genes to be expressed per cell
+  geom_hline(yintercept=15000, color = "red") + #Set maximum number of genes to be expressed per cell
+  geom_vline(xintercept=500, color = "blue") + #Set minimum number of UMI's per cell
+  geom_vline(xintercept=70000, color = "blue") #Set maximum number of UMI's per cell
+
+#Below two plots should match the above values and colors
+AD_count_hist <- AD@meta.data %>% 
+  ggplot(aes(x = nCount_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "blue") + 
+  geom_vline(xintercept = 70000, color = "blue") +
+  scale_x_log10()
+
+AD_feature_hist <- AD@meta.data %>% 
+  ggplot(aes(x = nFeature_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "red") +
+  geom_vline(xintercept = 15000, color = "red") +
+  scale_x_log10() +
+  coord_flip()
+
+wrap_plots(
+  AD_count_hist, blank,
+  AD_scatter, AD_feature_hist,
+  nrow = 2, ncol = 2, 
+  widths = c(1, 0.2), 
+  heights = c(0.2, 1)
+)
+
+#ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_cutoffs.png", height = 8, width = 8, bg = "white")
+```
+
+```{r}
+#You should generate a plot with test values and adjust based on the dataset!
+#I plot the full dataset and the organellar filtered dataset to be able to visualize how the organellar filtering impacts the data
+
+AE_scatter <- AE@meta.data %>% 
+  ggplot(aes(x = nCount_RNA, y = nFeature_RNA)) +
+  geom_point() + ggtitle("MIT_AE") +
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_hline(yintercept=500, color = "red") + #Set minimum number of genes to be expressed per cell
+  geom_hline(yintercept=15000, color = "red") + #Set maximum number of genes to be expressed per cell
+  geom_vline(xintercept=500, color = "blue") + #Set minimum number of UMI's per cell
+  geom_vline(xintercept=70000, color = "blue") #Set maximum number of UMI's per cell
+
+#Below two plots should match the above values and colors
+AE_count_hist <- AE@meta.data %>% 
+  ggplot(aes(x = nCount_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "blue") + 
+  geom_vline(xintercept = 70000, color = "blue") +
+  scale_x_log10()
+
+AE_feature_hist <- AE@meta.data %>% 
+  ggplot(aes(x = nFeature_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "red") +
+  geom_vline(xintercept = 15000, color = "red") +
+  scale_x_log10() +
+  coord_flip()
+
+wrap_plots(
+  AE_count_hist, blank,
+  AE_scatter, AE_feature_hist,
+  nrow = 2, ncol = 2, 
+  widths = c(1, 0.2), 
+  heights = c(0.2, 1)
+)
+
+#ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AE_cutoffs.png", height = 8, width = 8, bg = "white")
+```
+
+#Based on above plots filter dataset appropriately
+
+```{r}
+AD #64240 features across 12845 samples
+AD <- subset(AD, subset = nFeature_RNA > 500 & nFeature_RNA < 15000 & nCount_RNA > 500 & nCount_RNA < 70000)
+AD #64240 features across 10889 samples
+
+
+AE #64502 features across 12363 samples
+AE <- subset(AE, subset = nFeature_RNA > 500 & nFeature_RNA < 15000 & nCount_RNA > 500 & nCount_RNA < 70000)
+AE #64502 features across 10521 samples
+
+
+```
+
+## Summary Statistics
+
+```{r}
+summary(AD$nFeature_RNA)
+summary(AD$nCount_RNA)
+
+summary(AE$nFeature_RNA)
+summary(AE$nCount_RNA)
+```
+
+# Data Processing - QC First Look
+
+## Notes
+
+```{r}
+#We want to process the data as a quick QC to check clustering
+#This preprocessing is also required to do Doublet Filtering 
+```
+
+## Normalize the Data
+
+```{r}
+#Default = LogNormalize
+AD <- NormalizeData(AD)
+AE <- NormalizeData(AE)
+```
+
+## Clustering
+
+```{r}
+#Select Highly Variable features 
+AD <- FindVariableFeatures(AD, selection.method = "vst", nfeatures = 3000)
+AE <- FindVariableFeatures(AE, selection.method = "vst", nfeatures = 3000)
+
+```
+
+## Scale the Data
+
+```{r}
+AD.genes <- rownames(AD)
+AD <- ScaleData(AD, features = AD.genes)
+
+AE.genes <- rownames(AE)
+AE <- ScaleData(AE, features = AE.genes)
+```
+
+## PCA
+
+```{r}
+AD$Run <- AD@meta.data$orig.ident
+AD <- RunPCA(AD, npcs = 75, features = VariableFeatures(object = AD), verbose = FALSE) # run PCA (principal components)
+
+AE$Run <- AE@meta.data$orig.ident
+AE <- RunPCA(AE, npcs = 75, features = VariableFeatures(object = AE), verbose = FALSE) # run PCA
+```
+
+```{r}
+#Elbow plot helps us quickly estimate/check for how many PC's to use for clustering
+ElbowPlot(AD, ndims = 75)
+
+ElbowPlot(AE, ndims = 75)
+
+```
+
+## Call Clusters
+
+```{r}
+#Adjust dimensions based on PC's in elbow plot; I chose 60 because it is where they level off at low standard deviation
+#Adjust resolution based on clustering. Optimal resolution typically increases for datasets with more cells because you are more likely to capture more types of cells
+##Usually need to look at the UMAP and decide if cluster numbers/splitting looks good or not. Stem will usually have more clusters than leaf
+AD <- FindNeighbors(AD, dims = 1:60)
+AD <- FindClusters(AD, resolution = 0.6) #resolution can be adjusted depending on how the cells cluster. Higher resolution will break the umap into more clusters
+AD <- RunUMAP(AD, dims = 1:60)
+
+AE <- FindNeighbors(AE, dims = 1:60)
+AE <- FindClusters(AE, resolution = 0.6)
+AE <- RunUMAP(AE, dims = 1:60)
+```
+
+## Make UMAP Plots
+
+```{r}
+UMAP1 <- DimPlot(AD, reduction = "umap", label = T, label.size = 5, repel = T, split.by = "Run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  ) +
+  ggtitle("Grouped by Replicates\n")
+UMAP1
+
+
+UMAP2 <- DimPlot(AE, reduction = "umap", label = T, label.size = 5, repel = T, split.by = "Run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  ) +
+  ggtitle("Grouped by Replicates\n")
+UMAP2
+#I usally dont save this UMAP since I'm usually integrating later anyway. They look like they clustered well, so I don't need to adjust the resolution from 0.6
+```
+
+## General Stats
+
+```{r}
+#Cells in each cluster
+table(Idents(AD))
+# Cells in each replicate
+table(AD$orig.ident)
+#How does cluster membership vary by replicate?
+table(Idents(AD), AD$orig.ident)
+
+#Cells in each cluster
+table(Idents(AE))
+# Cells in each replicate
+table(AE$orig.ident)
+#How does cluster membership vary by replicate?
+table(Idents(AE), AE$orig.ident)
+```
+
+## Save "dirty" RDS before doublet removal in case needed later
+
+```{r}
+#saveRDS(AD, file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_seurat_09jan25.rds")
+
+#saveRDS(AE, file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AE_seurat_09jan25.rds")
+
+AD <- 
+  (file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_seurat_09jan25.rds")
+AE <- 
+  (file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AE_seurat_09jan25.rds")
+```
+
+## Stat Check
+
+```{r}
+#Check various stats to determine if there is an outlier for any of the clusters
+#Are there any clusters which have more doublets than others?
+plot1 <- VlnPlot(AD, features = c("nFeature_RNA"), pt.size = 0.5) + ggtitle("MIT_AD - nFeature_RNA")
+plot2 <-VlnPlot(AD, features = c("nCount_RNA"), pt.size = 0.5) + ggtitle("MIT_AD - nCount_RNA")
+
+ggarrange(plot1, plot2, nrow = 2, ncol = 1, common.legend = TRUE, legend = "bottom")
+
+plot1
+plot2
+
+plot1 <- VlnPlot(AE, features = c("nFeature_RNA"), pt.size = 0.5) + ggtitle("MIT_AE - nFeature_RNA")
+plot2 <-VlnPlot(AE, features = c("nCount_RNA"), pt.size = 0.5) + ggtitle("MIT_AE - nCount_RNA")
+
+ggarrange(plot1, plot2, nrow = 2, ncol = 1, common.legend = TRUE, legend = "bottom")
+
+plot1
+plot2
+
+#Notes: AD and AE; nFeature is number of genes/cell, nCount is number of UMIs/cell
+#AD: 20 clusters
+#AE:21 clusters
+```
+
+## Doublet Filtering
+
+```{r}
+#Install Information
+remotes::install_github('chris-mcginnis-ucsf/DoubletFinder')
+```
+
+## Run Doubletfinder
+
+```{r}
+library(DoubletFinder)
+#Code needs to be edited to work currently EVERY TIME in v4 but not v5
+#use "trace(paramSweep, edit = T)" and "trace(doubletFinder, edit = T)" - and edit $counts to @counts 
+
+```
+
+```{r}
+#AD doublets
+#Seurat Objects Pre-Processed, PCA and UMAP run 
+
+## pK Identification (no ground-truth) ---------------------------------------------------------------------------------------
+sweep.res.list_ai <- paramSweep(AD, PCs = 1:50, sct = FALSE)
+sweep.stats_ai <- summarizeSweep(sweep.res.list_ai, GT = FALSE)
+bcmvn_ai <- find.pK(sweep.stats_ai)
+
+pK=as.numeric(as.character(bcmvn_ai$pK))
+BCmetric=bcmvn_ai$BCmetric
+pK_choose = pK[which(BCmetric %in% max(BCmetric))]
+
+# save plot (not ggplot)
+png(file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_doubletfinder_pK_identification.png")
+
+par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
+plot(x = pK, y = BCmetric, pch = 16,type="b",
+col = "blue",lty=1)
+abline(v=pK_choose,lwd=2,col='red',lty=2)
+title("The BCmvn distributions")
+text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
+
+dev.off()
+
+## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
+homotypic.prop <- modelHomotypic(AD@meta.data$seurat_clusters)           ## ex: annotations <- seu_kidney@meta.data$ClusteringResults
+nExp_poi <- round(0.07*nrow(AD@meta.data))  ## Assuming 7% doublet formation rate - updated based on 40k cells loaded for PIPseq ##This is something that should be changed based on assumed doublet levels!
+nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+```
+
+```{r}
+## AD doublet test
+## Run DoubletFinder with varying classification stringencies ----------------------------------------------------------------
+#Update pK to be pK choosen from above steps!
+AD_doublet_test <- doubletFinder(AD, PCs = 1:50, pN = 0.25, pK = 0.23, nExp = nExp_poi, reuse.pANN = FALSE, sct = FALSE)
+
+AD_doublet_test
+
+#the DF.classifications_0.25 will need to change! The next two values are the pK you choose and the number of doublets found (nExp_poi)
+DimPlot(AD_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = "DF.classifications_0.25_0.23_762")+theme(aspect.ratio = 1)
+sum(str_count(AD_doublet_test$DF.classifications_0.25_0.23_762, "Doublet"))
+
+# 10889 cells; 762 doublets
+
+#Save a UMAP of which cells were the doublets
+##Does this match your expectations from the Violin plots of the clusters we made earlier?
+ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
+```
+
+```{r}
+## AE doublets
+#Seurat Objects Pre-Processed, PCA and UMAP run 
+
+## pK Identification (no ground-truth) ---------------------------------------------------------------------------------------
+sweep.res.list_ai <- paramSweep(AE, PCs = 1:50, sct = FALSE)
+sweep.stats_ai <- summarizeSweep(sweep.res.list_ai, GT = FALSE)
+bcmvn_ai <- find.pK(sweep.stats_ai)
+
+pK=as.numeric(as.character(bcmvn_ai$pK))
+BCmetric=bcmvn_ai$BCmetric
+pK_choose = pK[which(BCmetric %in% max(BCmetric))]
+
+
+# save plot (not ggplot)
+png(file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AE_doubletfinder_pK_identification.png")
+
+par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
+plot(x = pK, y = BCmetric, pch = 16,type="b",
+col = "blue",lty=1)
+abline(v=pK_choose,lwd=2,col='red',lty=2)
+title("The BCmvn distributions")
+text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
+
+dev.off()
+
+## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
+homotypic.prop <- modelHomotypic(AE@meta.data$seurat_clusters)           ## ex: annotations <- seu_kidney@meta.data$ClusteringResults
+nExp_poi <- round(0.07*nrow(AE@meta.data))  ## Assuming 7% doublet formation rate - updated based on 40k cells loaded for PIPseq ##This is something that should be changed based on assumed doublet levels!
+nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+```
+
+```{r}
+## AE doublet test
+## Run DoubletFinder with varying classification stringencies ----------------------------------------------------------------
+#Update pK to be pK choosen from above steps!
+AE_doublet_test <- doubletFinder(AE, PCs = 1:50, pN = 0.25, pK = 0.22, nExp = nExp_poi, reuse.pANN = FALSE, sct = FALSE)
+
+AE_doublet_test #10521 samples, 736 doublets
+
+#the DF.classifications_0.25 will need to change! The next two values are the pK you choose and the number of doublets found
+DimPlot(AE_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = "DF.classifications_0.25_0.22_736" )+theme(aspect.ratio = 1)
+sum(str_count(AE_doublet_test$DF.classifications_0.25_0.22_736, "Doublet"))
+
+#Save a UMAP of which cells were the doublets
+##Does this match your expectations from the Violin plots of the clusters we made earlier?
+
+ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AE_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
+```
+
+## Save RDS Object from Doublet Finder
+
+```{r}
+saveRDS(AD_doublet_test, file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_doublet_finder_seurat_09jan25.rds")
+
+saveRDS(AE_doublet_test, file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AE_doublet_finder_seurat_09jan25.rds")
+
+#Notes:
+
+```
+
+
+# Load RDS Object 
+```{r}
+#AD_doublet_test <- 
+("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_doublet_finder_seurat_09jan25.rds")
+#AE_doublet_test <- 
+("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AE_doublet_finder_seurat_09jan25.rds")
+
+```
+
+## Filter Doublets
+```{r}
+#AD
+AD_clean <- subset(AD_doublet_test, subset = DF.classifications_0.25_0.23_762 == "Singlet") #AD DF.classifications_0.25_0.23_762
+AD_clean # 10889 --> 10127 cells
+#AE
+AE_clean <- subset(AE_doublet_test, subset = DF.classifications_0.25_0.22_736 == "Singlet") #AE DF.classifications_0.25_0.22_736
+AE_clean #10521 --> 9785 cells
+
+#take note of number of doublets that were filtered out. 
+```
+
+## Summary Statistics Cleaned Data: Number of Genes  
+```{r}
+summary(AD_clean$nFeature_RNA)
+summary(AD_clean$nCount_RNA)
+
+summary(AE_clean$nFeature_RNA)
+summary(AE_clean$nCount_RNA)
+```
+
+# Re-Clustering Cleaned Data 
+## Notes
+```{r}
+#Now that we have a clean dataset we need to re-cluster things to account for the removal of doublets 
+#We can either re-run the above clustering steps for single samples OR we can integrate our replicates together at the same time
+```
+
+## Normalize the Data
+```{r}
+#Default = LogNormalize
+AD_clean <- NormalizeData(AD_clean)
+AE_clean <- NormalizeData(AE_clean)
+```
+
+# Integration via reciprocal PCA (RPCA)
+## Notes
+```{r}
+#This method is what was suggested in Suerat v4 as of Oct 2023. In their new vignette for Seurat v5 the methodology looks to be updated. This may warrant investigation prior to running the below! I still recommend RPCA, see the linked vginette below for reasons why.
+```
+
+##Data Prep
+```{r}
+#https://satijalab.org/seurat/articles/integration_rpca
+
+#We therefore,recommend RPCA during integrative analysis where: * A substantial fraction of cells in one dataset have no matching type in the other
+stem.list <- list(AD_clean, AE_clean)
+
+# normalize and identify variable features for each dataset independently
+stem.list <- lapply(X = stem.list, FUN = function(x) {
+    x <- NormalizeData(x)
+    x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 3000)
+})
+
+# select features that are repeatedly variable across datasets for integration run PCA on each
+# dataset using these features
+features <- SelectIntegrationFeatures(object.list = stem.list, nfeatures = 3000)
+stem.list <- lapply(X = stem.list, FUN = function(x) {
+    x <- ScaleData(x, features = features, verbose = FALSE)
+    x <- RunPCA(x, features = features, verbose = FALSE)
+})
+```
+
+## Integration 
+```{r}
+stem.anchors <- FindIntegrationAnchors(object.list = stem.list, anchor.features = features, reduction = "rpca")
+
+# this command creates an 'integrated' data assay
+stem.combined <- IntegrateData(anchorset = stem.anchors)
+
+# specify that we will perform downstream analysis on the corrected data note that the
+# original unmodified data still resides in the 'RNA' assay
+DefaultAssay(stem.combined) <- "integrated"
+```
+
+## Stats
+```{r}
+stem.combined
+
+summary(stem.combined$nFeature_RNA)
+summary(stem.combined$nCount_RNA)
+
+```
+
+## Scale the Data
+```{r}
+stem.combined.genes <- rownames(stem.combined)
+stem.combined <- ScaleData(stem.combined, features = stem.combined.genes)
+```
+
+## PCA
+```{r}
+stem.combined$Run <- stem.combined@meta.data$orig.ident
+stem.combined <- RunPCA(stem.combined, npcs = 75, features = VariableFeatures(object = stem.combined), verbose = FALSE) # run PCA
+```
+
+```{r}
+ElbowPlot(stem.combined, ndims = 75)
+```
+
+## Call Clusters
+```{r}
+stem.combined <- FindNeighbors(stem.combined, dims = 1:60) #adjust dims based on elbow plot above
+stem.combined <- FindClusters(stem.combined, resolution = 0.5) #adjustable resolution value. Check back and forth until it looks good
+stem.combined <- RunUMAP(stem.combined, dims = 1:60)
+```
+
+## Make UMAP Plots
+```{r}
+UMAP1 <- DimPlot(stem.combined, reduction = "umap", label = T, label.size = 5, repel = T, split.by = "Run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  ) +
+  ggtitle("Grouped by Replicates\n")
+UMAP1
+#check to see that there are the same number of cluster in each rep
+ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_integrated_umap.png", height = 8, width = 12, bg = "white")
+
+```
+
+```{r}
+UMAP2 <- DimPlot(stem.combined, reduction = "umap", label = T, label.size = 5, repel = T) +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  )
+UMAP2
+ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_integrated_umap_all_together.png", height = 8, width = 12, bg = "white")
+```
+
+## Stats - Integrated Clusters
+```{r}
+#Cells in each cluster
+table(Idents(stem.combined))
+
+# Cells in each replicate
+table(stem.combined$orig.ident)
+
+#How does cluster membership vary by replicate?
+table(Idents(stem.combined), stem.combined$orig.ident)
+```
+
+## Save cleaned integrated RDS Object
+```{r}
+#saveRDS(stem.combined, file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_cleaned_integrated_seurat_09jan25.rds")
+
+stem.combined <- readRDS("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_cleaned_integrated_seurat_09jan25.rds")
+```
+
+# Create Matrices
+## Find Markers 
+```{r}
+#seurat told me to install presto package for "faster implementation of the Wilcoxon Rank Sum Test (default method for FindMarkers)"
+
+#devtools::install_github('immunogenomics/presto')
+
+DefaultAssay(stem.combined) <- "RNA"
+
+stem.combined = JoinLayers(stem.combined)
+#due to the error messages, I ran this and the FindAllMarkers worked. Before doing this, this chunk generated error messages when I ran it: "Warning: No DE genes identifiedWarning: The following tests were not performed: Warning: When testing 0 versus all: data layers are not joined. Please run JoinLayers"
+
+stem.combined.markers <- FindAllMarkers(stem.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+
+stem.combined.markers %>% group_by(cluster)
+write.table(stem.combined.markers, "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_clean_integrated_all_markers_minpct0.25_minlfc0.25_13jan25.txt", quote = FALSE, sep = "\t", row.names = FALSE)
+```
+
+## Find Average Expression
+```{r}
+DefaultAssay(stem.combined) <- "RNA"
+
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(stem.combined)
+Idents(stem.combined) <- gsub(pattern = " ", replacement = "_", x = Idents(stem.combined))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(stem.combined) <- orig.levels
+cluster.averages <- AverageExpression(stem.combined, return.seurat = TRUE)
+cluster.averages
+
+# How can I extract expression matrix for all Cluster 0 cells (perhaps, to load into another package)
+cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ])
+#Warning: The `slot` argument of `GetAssayData()` is deprecated as of SeuratObject 5.0.0.
+#Please use the `layer` argument instead.
+
+#write.table(cluster_avg.data, file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_clean_integrated_cluster_avg_normalized_counts_13jan25.txt", sep = "\t", quote = FALSE)
+```
+
+# QC Data via Marker Gene Expression Check 
+
+# Look at Marker Genes
+```{r}
+#Need to create a file that has your marker genes and some metadata (cell types, etc.)
+
+annie_pathway_genes <- read.table("/scratch/ac05869/nih/kratom/marker_genes/mitr_v1_pathway_genes_top_4_hits_10jan25.txt", header = TRUE, sep = "\t")
+head(annie_pathway_genes)
+
+annie_pathway_genes$kratom.id <- gsub("\\.\\d+$", "", annie_pathway_genes$kratom.id)
+
+rev_annie_pathway_genes <- annie_pathway_genes[order(nrow(annie_pathway_genes):1),]
+```
+
+```{r}
+DefaultAssay(stem.combined) <- "RNA"
+
+DotPlot(stem.combined, features = unique(rev_annie_pathway_genes$kratom.id), 
+        ) +
+  scale_x_discrete(labels=rev_annie_pathway_genes$kratom.id) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Cluster",
+       x = "Genes") + 
+  coord_flip()
+```
+
+## Remove genes
+```{r}
+#Remove everything that has no expression based on the error messages from making the above plot
+#View(annie_pathway_genes) ##see row in which the variable was not found in order to subset
+subset <- str_trim(paste(scan("/scratch/ac05869/nih/kratom/marker_genes/genes_to_remove.txt", what = "character", sep = ",")))
+
+annie_pathway_genes_subset <- annie_pathway_genes %>%
+  filter(! as.character(kratom.id) %in% as.character(subset))
+
+#View(annie_pathway_genes_subset)
+rev_annie_pathway_genes_subset <- annie_pathway_genes_subset[order(nrow(annie_pathway_genes_subset):1),]
+
+
+#plot only genes with expression
+DotPlot(stem.combined, features = unique(rev_annie_pathway_genes_subset$kratom.id), 
+        ) +
+  scale_x_discrete(labels=rev_annie_pathway_genes_subset$kratom.id) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Cluster",
+       x = "Genes") + 
+  coord_flip()
+
+ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_integrated_full_pathway_top_4_hits.png", height = 15, width = 12, bg = "white")
+```
+
+
+```{r}
+#I want to save a table with the expressed genes and the cluster average expression data
+
+cluster_avg.data2 <- dplyr::as_tibble(cluster_avg.data, rownames = "kratom.id")
+
+pathway_genes_and_cluster_avg <- left_join(annie_pathway_genes_subset, cluster_avg.data2, by = "kratom.id", copy = TRUE)
+
+write.csv(pathway_genes_and_cluster_avg, file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/pathway_genes_top_4_hits_and_cluster_avg_expression_13jan25.csv", quote = FALSE)
+```
+
+
+```{r}
+#Based on highest average expression across all clusters, which I found in the csv file generated above, I chose the following genes from the top 4 hits to graph the dot plot
+
+highest_expressed_genes <- annie_pathway_genes_subset[c(2, 6, 8, 12, 17, 23, 24, 31, 35, 37, 39, 43, 49, 50, 55, 58, 62, 64, 69, 73, 78, 80, 83, 86, 89, 95, 98, 101, 104, 108, 113, 115, 116, 118, 123, 128, 130, 135, 138),] #genes in steps 20 and 34 out of 41 in "order2" were not expressed
+
+#View(highest_expressed_genes)
+rev_highest_expressed_genes <- highest_expressed_genes[order(nrow(highest_expressed_genes):1),]
+
+
+#plot only genes with expression
+DotPlot(stem.combined, features = unique(rev_highest_expressed_genes$kratom.id), 
+        ) +
+  scale_x_discrete(labels=rev_highest_expressed_genes$gene.abbreviation) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Cluster",
+       x = "Genes") + 
+  coord_flip()
+
+ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_integrated_full_pathway_highest_expressed.png", height = 15, width = 12, bg = "white")
+
+```

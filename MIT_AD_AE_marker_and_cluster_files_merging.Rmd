@@ -1,0 +1,133 @@
+---
+title: "Kratom stem clean_integrated_all_markers"
+author: "Anne Pavia"
+date: "2025-01-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(Seurat) 
+library(readxl)
+library(RColorBrewer)
+library(viridis)
+library(svglite) 
+library(patchwork)
+library(cowplot)
+library(ggpubr)
+library(ape)
+```
+
+Seurat analysis files "clean_integrated_all_markers.txt" and "clean_integrated_cluster_avg_normalized_counts.txt" needs to be edited to also contain gene information, such as start, end, chromosome, and functional annotation.
+
+> Notes: coexpression analysis has not been done yet and orthofinder has not been run yet
+
+#Integrated_all_markers
+## Read in integrated marker file
+```{r}
+stem.combined.markers <- read.table(file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_clean_integrated_all_markers_minpct0.25_minlfc0.25_13jan25.txt", sep = "\t", header=TRUE)
+stem.combined.markers <- stem.combined.markers %>%
+  rename(ID = gene)
+head(stem.combined.markers)
+dim(stem.combined.markers) #15845
+
+#replace "-" with underscores '_' so that it matches the gff file
+stem.combined.markers$ID <- gsub(pattern = "-", replacement = "_", stem.combined.markers$ID)
+#Remove transcript syntax
+stem.combined.markers$ID <- gsub("\\.\\d+$", "", stem.combined.markers$ID)
+head(stem.combined.markers)
+```
+
+##Read in gff file
+```{r}
+working_models <- read.gff("/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.working_models.gff3", na.strings = c(".", "?"), GFF3 = TRUE)
+head(working_models)
+#parse apart attributes column
+head(attributes <- working_models$attributes)
+head(parsed_attributes <- strsplit(attributes, ";"))
+extract_attribute_value <- function(attribute_list, key) {
+  key_value <- grep(paste0("^", key, "="), attribute_list, value = TRUE)
+  if (length(key_value) > 0) {
+    return(sub(paste0("^", key, "="), "", key_value))
+  } else {
+    return(NA)
+  }
+}
+working_models$Name <- sapply(parsed_attributes, extract_attribute_value, key = "Name")
+working_models$ID <- sapply(parsed_attributes, extract_attribute_value, key = "ID")
+working_models$Parent <- sapply(parsed_attributes, extract_attribute_value, key = "Parent")
+
+working_models2 <- working_models %>%
+  select(c(ID, seqid, type, start, end, strand)) %>%
+  rename(chr = seqid)
+head(working_models2)
+dim(working_models2) #2453596
+
+#Remove transcript syntax
+#working_models2$ID <- gsub("\\.\\d+$", "", working_models2$ID) #Did not do this because there are different transcripts with the same ID
+#head(working_models2)
+
+```
+## Read in Functional Annotation file - This caused problems when using read.table() by causing incorrect number of lines.
+```{r}
+anno <- read.delim(file = "/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.functional_annotation.txt", header = FALSE, sep = "\t", col.names = c("ID", "functional_annotation"))
+#Remove transcript syntax
+anno$ID <- gsub("\\.\\d+$", "", anno$ID)
+head(anno)
+nrow(anno) #172819
+```
+
+##Join files
+```{r}
+#Need to add chr, pos_left, pos_right, best_arab_hit, best_arab_hit_functional_annotation, CoExpression_Module_Membership, avg_log2FC
+
+markers_with_working_models <- inner_join(stem.combined.markers, working_models2, by="ID") %>% 
+  select(cluster, ID, chr, type, start, end, strand, avg_log2FC, p_val_adj)
+dim(markers_with_working_models) #15845 inner join (matches)
+head(markers_with_working_models)
+tail(markers_with_working_models)
+
+markers_with_working_models_anno <- left_join(markers_with_working_models, anno, by = "ID", multiple = "first")
+dim(markers_with_working_models_anno) #15845
+head(markers_with_working_models_anno)
+
+markers_with_working_models_anno %>%
+  write.table(file = "/scratch/ac05869/nih/kratom_pathway/MIT_AD_AE_clean_integrated_all_markers_minpct0.25_minlfc0.25_with_info_30jan25.txt", row.names = FALSE, sep = "\t", quote = FALSE)
+
+```
+
+
+# Cluster_avg_normalized_counts
+##Read in cluster average normalized counts
+```{r}
+cluster_avg.data <- read.table(file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_clean_integrated_cluster_avg_normalized_counts_13jan25.txt", sep = "\t") %>%
+  rownames_to_column(var = "ID")
+dim(cluster_avg.data) #67044
+list(colnames(cluster_avg.data)) #0-23 clusters
+
+#replace "-" with underscores '_' so that it matches the gff file
+cluster_avg.data$ID <- gsub(pattern = "-", replacement = "_", cluster_avg.data$ID)
+head(cluster_avg.data)
+dim(cluster_avg.data) #67044
+colnames(cluster_avg.data) <- c("ID", c(0:23)) #This changes based on the number of clusters
+```
+
+##Join files # Could not add annotation data due to incorrect reading of annotation file
+```{r}
+#Need to add chr, start, end, functional_annotation, PFAM, orthogroup, arab_genes_in_orthogroup, cluster 's
+cluster_data <- inner_join(cluster_avg.data, working_models2, by="ID")
+head(cluster_data)
+dim(cluster_data) #67044
+print(colnames(cluster_data)) #which column names are the clusters
+
+cluster_data <- left_join(cluster_data, anno, by = "ID", multiple = "first") %>%
+       select(!c(strand, type))
+dim(cluster_data) #67044       
+head(cluster_data)
+
+write.table(cluster_data, file = "/scratch/ac05869/nih/kratom_pathway/MIT_AD_AE_clean_integrated_cluster_avg_normalized_counts_with_info_30jan25.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+

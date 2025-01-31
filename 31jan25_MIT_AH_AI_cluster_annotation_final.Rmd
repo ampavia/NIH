@@ -1,0 +1,300 @@
+---
+title: "MIT_AH_AI_cluster_annotation"
+author: "Anne Pavia"
+date: "2025-01-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# packages 
+```{r}
+library(tidyverse)
+library(Seurat)
+library(readxl)
+library(RColorBrewer)
+library(rcartocolor)
+library(viridis)
+library(patchwork)
+```
+
+# Pull Seurat data
+```{r}
+leaf.combined <- readRDS("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/MIT_AH_AI_cleaned_integrated_seurat_14jan25.rds")
+DefaultAssay(leaf.combined) <- "RNA"
+leaf.combined = JoinLayers(leaf.combined)
+leaf.combined.markers <- FindAllMarkers(leaf.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+```
+
+## Pull annotation
+```{r}
+repr_gene_models <- read_delim("/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.hc_gene_models.repr.gff3",
+                               delim = "\t", col_names = F)
+
+repr_loci <- repr_gene_models %>% 
+  dplyr::filter(X3 == "mRNA") %>% 
+  dplyr::select(X1, X4, X5, X7, X9) %>% 
+  separate(X9, c("ID", "Name"), sep = ";") %>% 
+  dplyr::select(-Name) %>% 
+  separate(ID, c("temp", "gene_ID"), sep = "=") %>% 
+  dplyr::select(-temp) %>% 
+  mutate(LocusID = str_sub(gene_ID, start = 1, end = 13)) %>% 
+  mutate(gene_ID = str_replace(gene_ID, "_", "-")) %>% 
+  mutate(LocusID = str_replace(LocusID, "_", "-")) %>% 
+  dplyr::rename(
+    Chr = X1,
+    start = X4,
+    end = X5,
+    strand = X7
+  )
+
+head(repr_loci)
+```
+
+# Pull marker genes and blast hits
+```{r}
+leaf_markers <- read_delim("/scratch/ac05869/nih/marker_genes_dionne/From_Dionne/dionne_marker_genes_list.tsv", col_types = cols())
+head(leaf_markers)
+
+kratom_genes <- read_delim("/scratch/ac05869/nih/marker_genes_dionne/blast/blastn_hits.34716718.tsv", col_names = c("Ath", "gene_ID", "pident", "length", "mismatch", "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore"))
+head(kratom_genes)
+kratom_genes$Ath <- gsub("\\.\\d+$", "", kratom_genes$Ath)
+
+leaf_markers <- leaf_markers %>% 
+  left_join(kratom_genes, by = "Ath", multiple = "first") %>%
+  mutate(gene_ID.x = gene_ID) %>% 
+  left_join(repr_loci, by = "gene_ID") %>%
+  select(c(1:7, 15, 16, 18))
+leaf_markers$gene_ID <- gsub("\\.\\d+$", "", leaf_markers$gene_ID)
+leaf_markers$gene_ID <- gsub(pattern = "_", replacement = "-", leaf_markers$gene_ID)
+
+head(leaf_markers)
+```
+
+
+## Cell type assignment heatmap
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+
+leaf_markers2 <- leaf_markers %>% 
+  dplyr::select(symbol, cell_type, gene_ID) %>% 
+  # rbind(leaf_markers) %>% 
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.03-2G025480") == F) %>% 
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.19-2G000490") == F) %>%
+  dplyr::filter(is.na(gene_ID) == F)
+  
+Marker_dotplot <- DotPlot(leaf.combined, 
+                          features = unique(leaf_markers2$gene_ID)) 
+head(Marker_dotplot$data)
+
+Marker_dotplot_nice_df <- Marker_dotplot$data %>% 
+  mutate(gene_ID = row.names(.)) %>% 
+  mutate(gene_ID = str_sub(gene_ID, end = 15)) %>% 
+  full_join(leaf_markers2 %>% 
+              distinct(gene_ID, .keep_all = T),
+             by = c("features.plot" = "gene_ID")) %>% 
+   mutate(cell_type2 = case_when(
+    str_detect(cell_type, "meso") ~ "M",
+    str_detect(cell_type, "cam|x|phl|com|vas") ~ "V",
+    str_detect(cell_type, "epi") ~ "E",
+    str_detect(cell_type, "guard") ~ "GC",
+    str_detect(cell_type, "IPAP") ~ "IP",
+    str_detect(cell_type, "idioblast")  ~ "I",
+    str_detect(cell_type, "G0|G1|G2|prolif")  ~ "Pro",
+    str_detect(cell_type, "shoot") ~ "SAM",
+  )) %>% 
+  dplyr::filter(str_detect(cell_type, "shea") == F) %>% 
+  mutate(cell_type2 = factor(cell_type2, levels = c(
+    "M", "E", "GC", "V", "IP", "I", "Pro", "SAM"
+  ))) %>% 
+  mutate(cell_type3 = as.numeric(cell_type2)) %>% 
+  mutate(features.plot = reorder(features.plot, -cell_type3))  %>% 
+  dplyr::filter(is.na(avg.exp.scaled) == F) %>%
+  mutate(id = factor(id, levels = c(
+    "9", "12", "13", "21", "18", "15", 
+    "8",
+    "10",
+    "6",
+    "1", "9"
+  ))) %>% 
+  dplyr::filter(is.na(avg.exp.scaled) == F)
+
+dim(Marker_dotplot_nice_df)
+```
+Mesophyll:8
+* Epi: 10
+* Guard: 6
+* Vasculature: 9, 12, 13, 21, 18, 15
+* Un: 1, 2, 3, 4, 5, 7, 11, 14
+
+```{r}
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  ggplot(aes(y = features.plot, x = id)) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+#ggsave("/scratch/ac05869/nih/kratom/unordered_MIT_AH_AI_clusters_with_markers_30jan25.png", width = 10, height = 8)
+```
+
+
+```{r}
+#To find the peak value for each row, use group_by(row) followed by slice_max()
+my_data_peak_values <- Marker_dotplot_nice_df %>% 
+  group_by(features.plot) %>% 
+  slice_max(order_by = avg.exp.scaled, n = 1, with_ties = FALSE) %>% 
+  rename(peaked_at = id) %>% 
+  select(features.plot, peaked_at)
+View(my_data_peak_values)
+dim(my_data_peak_values)
+
+#Now we have a data frame, each row is a row that will appear in the heatmap. For each row, there is information on which column of the heatmap it peaks at.
+#To find how many rows peak at each column, use group_by(column) followed by count().
+number_of_peaks <- my_data_peak_values %>% 
+  group_by(peaked_at) %>% 
+  count() %>% 
+  arrange(-n)
+head(number_of_peaks)
+dim(number_of_peaks)
+
+#Now we will reorder rows by columns
+my_data_peak_values_reordered <- my_data_peak_values %>% 
+  inner_join(number_of_peaks, by = "peaked_at") %>% 
+  arrange(-n)  
+head(my_data_peak_values)
+
+#After finding these basic statistics, we can join these statistics to our main data frame.
+my_data_reordered <- Marker_dotplot_nice_df %>% 
+  inner_join(number_of_peaks, by = c("id" = "peaked_at")) %>% 
+  mutate(id = reorder(id, -n)) %>%  # this reorders the columns
+  select(-n) %>% 
+  inner_join(my_data_peak_values_reordered, by = "features.plot") %>% 
+  mutate(peaked_at = reorder(peaked_at, n)) %>% 
+  mutate(order_rows = as.numeric(peaked_at)) %>% 
+  mutate(row = reorder(features.plot, order_rows)) # this reorders the rows by the "peaked_at" column. 
+  
+
+head(my_data_reordered)
+dim(my_data_reordered)
+
+```
+
+
+```{r}
+Marker_dot_ordered <- my_data_reordered %>% 
+  ggplot(aes(y = features.plot, x = peaked_at)) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+Marker_dot_ordered
+
+ggsave("/scratch/ac05869/nih/kratom/unordered_MIT_AH_AI_clusters_with_markers_30jan25.png", width = 10, height = 8)
+```
+
+* Mesophyll:8
+* Epi: 10
+* Guard: 6
+* Vasculature: 9, 12, 13, 21, 18, 18, 15
+* Un:
+
+* IPAP:
+* Idioblast:
+
+```{r}
+leaf_cell_type_assignment <- data.frame(
+  cluster = c(0:15)
+) %>% 
+  mutate(cell_type = case_when(
+    cluster == 0 | 
+      cluster == 1 | 
+      cluster == 3 | 
+      cluster ==7  ~ "Mesophyll",
+    cluster == 2 | 
+      cluster == 5 ~ "Epidermis",
+    cluster == 12 ~ "Guard cells",
+    cluster == 11 |
+      cluster == 6 |
+      cluster == 10 |
+      cluster == 14 |
+      cluster == 15  ~ "Vasculature",
+    cluster == 13 ~ "IPAP",
+      cluster == 8 ~ "Idioblast",
+    T ~ "Unassigned"
+  )) %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Vasculature", 
+                              "IPAP", "Idioblast", "Unassigned"
+                            ))) %>% 
+  mutate(cluster = factor(cluster, levels = c(
+    "0", "1", "3", "7", 
+    "2","5", 
+    "12",
+    "11", "6", "10", "14", "15",
+    "13", "8",
+    "4", "9"
+  )))
+```
+
+
+```{r}
+Leaf_cell_type_strip <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "" )) +
+  geom_tile(aes(fill = cell_type)) +
+  scale_fill_manual(values = c(brewer.pal(6, "Accent"), "grey80")) +
+  guides(fill = guide_legend(nrow = 3)) +
+  labs(fill = "Cell type") +
+  theme_void() +
+  theme(
+    legend.position = "bottom" ,
+    text = element_text(size = 14)
+  )
+
+Leaf_cell_type_strip
+
+Leaf_cell_type_mkr_text <- Marker_dotplot_nice_df %>% 
+  dplyr::filter(id == 0) %>% 
+  ggplot(aes(x = "", y = gene_ID)) +
+  geom_text(aes(label = Symbol), fontface = "italic") +
+  theme_void()
+
+blank <- data.frame(
+  x = 0,
+  y = 0
+) %>% 
+  ggplot(aes(x, y)) +
+  theme_void()
+
+Marker_dot_strip <- wrap_plots(Marker_dot, Leaf_cell_type_mkr_text,
+          Leaf_cell_type_strip, blank,
+          heights = c(1, 0.03), 
+          widths = c(1, 0.2), nrow = 2, ncol = 2)
+
+Marker_dot_strip
+ggsave("../Results/R_output/Cell_type_assignment_plot.svg", height = 6, width = 7.5, bg = "white")
+ggsave("../Results/R_output/Cell_type_assignment_plot.png", height = 6, width = 7.5, bg = "white")
+```

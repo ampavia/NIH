@@ -1,0 +1,94 @@
+---
+title: "MIT_AD_AE_cluster_annotation"
+author: "Anne Pavia"
+date: "2025-01-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(Seurat) 
+library(readxl)
+library(RColorBrewer)
+library(viridis)
+library(svglite) 
+library(patchwork)
+library(cowplot)
+library(ggpubr)
+library(ape)
+library(readxl)
+```
+
+Seurat analysis file "clean_integrated_all_markers.txt" and a list of tissue specific marker genes to annotate seurat clusters
+
+## Read in integrated marker file
+```{r}
+leaf.combined.markers <- read.table(file = "/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/MIT_AH_AI_clean_integrated_all_markers_minpct0.25_minlfc0.25_14jan25.txt", sep = "\t", header=TRUE)
+head(leaf.combined.markers <- leaf.combined.markers %>%
+  rename(gene_id = gene))
+```
+
+## Read in Functional Annotation file
+```{r}
+func.anno <- read.table(file ="/scratch/ac05869/nih/kratom/mitr_v1_genome/mitr_v1.functional_annotation.txt", sep = "\t", header=FALSE, col.names = c("gene_id", "functional_annotation"))
+func.anno$gene_id <- gsub("\\.\\d+$", "", func.anno$gene_id)
+head(func.anno)
+```
+
+##Read in gff file
+```{r}
+working_models <- read.gff("/scratch/ac05869/nih/kratom/mitr_v1_genome/mitr_v1.working_models.gff3", na.strings = c(".", "?"), GFF3 = TRUE)
+head(working_models)
+#parse apart attributes column
+head(attributes <- working_models$attributes)
+head(parsed_attributes <- strsplit(attributes, ";"))
+extract_attribute_value <- function(attribute_list, key) {
+  key_value <- grep(paste0("^", key, "="), attribute_list, value = TRUE)
+  if (length(key_value) > 0) {
+    return(sub(paste0("^", key, "="), "", key_value))
+  } else {
+    return(NA)
+  }
+}
+working_models$Name <- sapply(parsed_attributes, extract_attribute_value, key = "Name")
+working_models$ID <- sapply(parsed_attributes, extract_attribute_value, key = "ID")
+working_models$Parent <- sapply(parsed_attributes, extract_attribute_value, key = "Parent")
+working_models2 <- working_models %>%
+  rename(c(gene_id = ID, chr = seqid))
+```
+
+## Read in marker list, TAIR10 query results, then merge
+
+```{r}
+mkr_genes <- read_excel("/scratch/ac05869/nih/marker_genes/NIH_marker_genes.xlsx")
+dim(mkr_genes)
+head(mkr_genes)
+
+mkr_genes2 <- read_tsv("/scratch/ac05869/nih/marker_genes/gene_results_2025-01-22.tsv", col_names = TRUE, show_col_types = FALSE)
+colnames(mkr_genes2) <- c("TAIR_Accession", "TAIR10_Locus", "Gene_Type", "Description", "Other_Name", "Keywords")
+dim(mkr_genes2)
+head(mkr_genes2)
+
+arab_mkr <- full_join(mkr_genes, mkr_genes2, by = "TAIR10_Locus") %>%
+  select("TAIR10_Locus", "TAIR_Accession", "Symbol", "Full_name", "Tissue_Type", "Function", "Gene_Type", "Description")
+dim(arab_mkr)
+head(arab_mkr)
+```
+
+## Read in top blast hits for mitsp.v1
+```{r}
+mitsp.v1 <- read.table("/scratch/ac05869/nih/marker_genes/top_mitr.v1_markers.txt", sep = "\t", header=FALSE, col.names = c("TAIR10_Locus", "gene_id", "pident",	"length",	"mismatch",	"gapopen",	"qstart",	"qend",	"sstart",	"send",	"evalue",	"bitscore"))
+mitsp.v1$TAIR10_Locus <- gsub("\\.\\d+$", "", mitsp.v1$TAIR10_Locus)
+dim(mitsp.v1)
+head(mitsp.v1)
+
+arab_mitsp.v1 <- full_join(arab_mkr, mitsp.v1, by = "TAIR10_Locus")
+dim(arab_mitsp.v1)
+head(arab_mitsp.v1)
+
+write_excel_csv(arab_mitsp.v1, file = "/scratch/ac05869/nih/marker_genes/mitr.v1_marker_genes.csv", delim = ",")
+```
+
+The sorted top hit on the mitsp.v1 genome is according to bitscore > evalue > perc identity. 

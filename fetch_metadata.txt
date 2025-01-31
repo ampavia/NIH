@@ -1,0 +1,16 @@
+esearch and efetch, can be used to query and pull information from Entrez. 
+Use them to get the same run info that we grabbed using the Run Selector with the following one liner:
+
+
+```
+esearch -db sra -query SRP109982 | efetch -format metadata > metadata.csv
+```
+You can also provide the BioProject ID to esearch, which queries the SRA. That info can be piped to efetch, which will pull down the run info in comma separated format, which we can save to file using >.
+Then we can use a combo of cat, cut, grep, and head to grab only the accession info we are interested in:
+
+```
+cat runinfo.csv | cut -f 1 -d ',' | grep SRR | head > runids.txt
+```
+Here, we opened the file with cat, piped it to the cut command, piped it to grep for only the accession IDs (skipping the column header), and get only the first few results.
+
+So what is cut? It is a unix command, that is used to cut out selected portions of the file (man cut for more info). The -f option specifies which field to cut (the first field), and -d tells the program which delimiter to use. We know this is a comma-separate value file, so we do -d ',' to specify the comma.

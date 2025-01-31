@@ -1,0 +1,121 @@
+---
+title: "MIT_AH_AI_cell_type_clusters"
+author: "Anne Pavia"
+date: "2025-01-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(Seurat) 
+library(readxl)
+library(RColorBrewer)
+library(viridis)
+library(svglite) 
+library(patchwork)
+library(cowplot)
+library(ggpubr)
+library(ape)
+```
+
+
+#Load Seurat object
+```{r}
+leaf.combined <- readRDS("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/MIT_AH_AI_cleaned_integrated_seurat_14jan25.rds")
+```
+
+# Create Matrices
+## Find Markers 
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+leaf.combined = JoinLayers(leaf.combined)
+leaf.combined.markers <- FindAllMarkers(leaf.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+
+leaf.combined.markers <- leaf.combined.markers %>% group_by(cluster) %>% 
+  rename(kratom.id = gene)
+head(leaf.combined.markers)
+```
+
+## Find Average Expression
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(leaf.combined)
+Idents(leaf.combined) <- gsub(pattern = " ", replacement = "_", x = Idents(leaf.combined))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(leaf.combined) <- orig.levels
+cluster.averages <- AverageExpression(leaf.combined, return.seurat = TRUE)
+cluster.averages
+
+```
+
+# Look at Marker Genes
+```{r}
+gene_info <- read_tsv("/scratch/ac05869/nih/marker_genes/nih_marker_list.tsv") %>%
+                        rownames_to_column() #arabidopsis marker gene information, such as tissue specificity and gene type
+head(gene_info)
+dim(gene_info)
+
+marker_genes <- read.table(file = "/scratch/ac05869/nih/marker_genes/top_2_marker_genes_kratom.out", col.names = c("Locus", "kratom.id", "pident",	"length",	"mismatch",	"gapopen",	"qstart",	"qend",	"sstart",	"send",	"evalue",	"bitscore"))
+head(marker_genes)
+dim(marker_genes)
+
+#Remove transcript syntax
+marker_genes$kratom.id <- gsub("\\.\\d+$", "", marker_genes$kratom.id)
+marker_genes$Locus <- gsub("\\.\\d+$", "", marker_genes$Locus)
+
+#change underscores to 
+
+#join marker genes with gene annotation
+markers <- inner_join(marker_genes, gene_info, by = "Locus") %>%
+       select(rowname, Locus, kratom.id, Symbol, Full_name, Tissue_Type, Function)
+head(markers)
+dim(markers)
+
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(leaf.combined)
+Idents(leaf.combined) <- gsub(pattern = " ", replacement = "_", x = Idents(leaf.combined))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(leaf.combined) <- orig.levels
+cluster.averages <- AverageExpression(leaf.combined, return.seurat = TRUE)
+cluster.averages
+```
+
+# Merge marker genes with cluster markers from seurat
+```{r}
+clusters_and_markers <- inner_join(leaf.combined.markers, markers, by = "kratom.id")
+head(clusters_and_markers)
+```
+
+#Make dot plot
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+
+#join marker genes with gene annotation
+markers <- inner_join(marker_genes, gene_info, by = "Locus") %>%
+       select(Locus, kratom.id, Symbol, Full_name, Tissue_Type, Function)
+head(markers)
+dim(markers)
+
+#plot only genes with expression
+dotplot_data <- DotPlot(leaf.combined, features = unique(markers$kratom.id)$data
+unique(markers$kratom.id) #Count if any duplicate gene ID's
+head(dotplot_data)
+
+dotplot_data %>% 
+  inner_join(markers %>% 
+               distinct(kratom.id, .keep_all = T), by = c("features.plot"="kratom.id")) %>%
+  mutate(tag = paste(Symbol, features.plot)) %>%
+  ggplot(aes(x = id, y = tag,)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Marker",
+       x = "Cluster") + 
+  theme_classic()
+
+ggsave("/scratch/ac05869/nih/marker_genes/MIT_AH_AI_cluster_anno_23jan25.png", height = 12, width = 10, bg = "white")
+```
+

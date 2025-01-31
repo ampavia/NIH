@@ -1,0 +1,53 @@
+---
+title: "MIT_AD_AE_coexpression"
+author: "Anne Pavia"
+date: "2025-01-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(igraph)
+library(ggraph)
+
+library(readxl)
+library(patchwork)
+library(RColorBrewer)
+library(viridis)
+
+set.seed(666)
+```
+
+# Gene Expression matrix
+
+Many software can generate gene expression matrix, such as Cufflinks, kallisto, and STAR.
+
+My go-to is kallisto, but you do you. The requirements are:
+
+Estimation of gene expression abundance, in units of TPM or FPKM.
+Each row is a gene, and each column is a library.
+```{r}
+Exp_table <- read_csv("/scratch/ac05869/nih/kratom/coexpression/data/Shinozaki_tpm_representative_transcripts.csv",
+                      col_types = cols())
+head(Exp_table)
+dim(Exp_table)
+```
+
+Looks like there are 32496 genes and 484 columns. Since the 1st column is gene IDs, there are total of 483 libraries.
+
+# Metadata
+
+Metadata are very helpful for any gene expression analyses. Metadata are the data of the data, the biological and technical descriptions for each library.
+
+If you downloaded your data from SRA, you can fetch the metadata associated with the submission. You can use E-utilities to fetch metadata given an accession number.
+If you are analyzing unpublished data, contact your colleagues who generated the samples for metadata
+
+```{r}
+Metadata <- read_csv("/scratch/ac05869/nih/kratom/coexpression/data/SraRunTable.csv",
+                     col_types = cols())
+head(Metadata)
+dim(Metadata)
+```
+
+Looks like there are 483 libraries and 17 different technical or biological descriptions for each library. At this step, you should check that the number of libraries matches between the metadata and gene expression matrix. In this case, both indicate there are 483 libraries, so we are good to proceed.

@@ -1,0 +1,122 @@
+---
+title: "Dot plots kratom stem"
+author: "Anne Pavia"
+date: "2025-01-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(Seurat) 
+library(readxl)
+library(RColorBrewer)
+library(viridis)
+library(svglite) 
+library(patchwork)
+library(cowplot)
+library(ggpubr)
+```
+
+#Load Seurat object
+```{r}
+stem.combined <- readRDS("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_cleaned_integrated_seurat_09jan25.rds")
+```
+
+# Create Matrices
+## Find Markers 
+```{r}
+#seurat told me to install presto package for "faster implementation of the Wilcoxon Rank Sum Test (default method for FindMarkers)"
+
+#devtools::install_github('immunogenomics/presto')
+
+DefaultAssay(stem.combined) <- "RNA"
+
+stem.combined = JoinLayers(stem.combined)
+#due to the error messages, I ran this and the FindAllMarkers worked. Before doing this, this chunk generated error messages when I ran it: "Warning: No DE genes identifiedWarning: The following tests were not performed: Warning: When testing 0 versus all: data layers are not joined. Please run JoinLayers"
+
+stem.combined.markers <- FindAllMarkers(stem.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+
+stem.combined.markers %>% group_by(cluster)
+#write.table(stem.combined.markers, "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_clean_integrated_all_markers_minpct0.25_minlfc0.25_14jan25.txt", quote = FALSE, sep = "\t", row.names = FALSE)
+```
+
+## Find Average Expression
+```{r}
+DefaultAssay(stem.combined) <- "RNA"
+
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(stem.combined)
+Idents(stem.combined) <- gsub(pattern = " ", replacement = "_", x = Idents(stem.combined))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(stem.combined) <- orig.levels
+cluster.averages <- AverageExpression(stem.combined, return.seurat = TRUE)
+cluster.averages
+
+# How can I extract expression matrix for all Cluster 0 cells (perhaps, to load into another package)
+cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ])
+#Warning: The `slot` argument of `GetAssayData()` is deprecated as of SeuratObject 5.0.0. Used the `layer` argument instead.
+#write.table(cluster_avg.data, file = "/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_clean_integrated_cluster_avg_normalized_counts_14jan25.txt", sep = "\t", quote = FALSE)
+```
+
+# QC Data via Marker Gene Expression Check 
+
+# Look at Marker Genes
+```{r}
+#Need to create a file that has your marker genes and some metadata (cell types, etc.). Change all underscores to either dashes or periods
+
+annie_pathway_genes <- read.table("/scratch/ac05869/nih/kratom_pathway/kratom_pathway_gene_allwin_top_hit.txt", header = TRUE, sep = "\t")
+head(annie_pathway_genes)
+
+annie_pathway_genes$kratom.id <- gsub("\\.\\d+$", "", annie_pathway_genes$kratom.id)
+
+rev_annie_pathway_genes <- annie_pathway_genes[order(nrow(annie_pathway_genes):1),]
+```
+
+#Find missing genes. This plot is incorrect
+```{r}
+DefaultAssay(stem.combined) <- "RNA"
+
+DotPlot(stem.combined, features = unique(rev_annie_pathway_genes$kratom.id), 
+        ) +
+  scale_x_discrete(labels=rev_annie_pathway_genes$gene.abbreviation) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Cluster",
+       x = "Genes") + 
+  coord_flip()
+```
+
+## Remove genes
+```{r}
+#Remove everything that has no expression based on the error messages from making the above plot
+#View(annie_pathway_genes) ##see row in which the variable was not found in order to subset
+subset <- str_trim(paste(scan("/scratch/ac05869/nih/kratom_pathway/kratom_leaf_pathway_genes_absent_allwin_top_hit.txt", what = "character", sep = c(",", " "))))
+
+annie_pathway_genes_subset <- annie_pathway_genes %>%
+  filter(! as.character(kratom.id) %in% as.character(subset))
+
+#reverse order
+#rev_annie_pathway_genes_subset <- annie_pathway_genes_subset[order(nrow(annie_pathway_genes_subset):1),]
+(rev_annie_pathway_genes_subset <- annie_pathway_genes_subset %>% arrange(desc(order))) #another way to do it if your data has "order" column
+```
+
+# Make dot plot
+```{r}
+#plot only genes with expression
+(dotplot_data <- DotPlot(stem.combined, features = unique(rev_annie_pathway_genes_subset$kratom.id))$data)
+(unique(rev_annie_pathway_genes_subset$kratom.id)) #Count if any duplicate gene ID's
+
+dotplot_data %>% 
+  inner_join(rev_annie_pathway_genes_subset %>% 
+               distinct(kratom.id, .keep_all = T), by = c("features.plot"="kratom.id")) %>%
+  mutate(tag = paste(gene.abbreviation, features.plot)) %>%
+  ggplot(aes(x = id, y = reorder(tag,order, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster") + 
+  theme_classic()
+
+ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_new_allwin_pathway_top_hit.png", height = 10, width = 12, bg = "white")
+```

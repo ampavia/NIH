@@ -1,0 +1,44 @@
+# Make peptide DB inside directory with Cath_query.pep.fa
+interact --mem=48G
+mkdir db_kratom
+cd db_kratom
+ml BLAST+/2.11.0-gompi-2019b
+cp /scratch/ac05869/nih/kratom/mitr_v1_genome/mitr_v1.hc_gene_models.repr.pep.fa .
+
+makeblastdb -in mitr_v1.hc_gene_models.repr.pep.fa -parse_seqids -dbtype prot
+
+cd ..
+
+blastp -query Cath_query.pep.fa \
+-db db_kratom/mitr_v1.hc_gene_models.repr.pep.fa \
+-outfmt 6 \
+-num_threads 24 \
+-out known_cath_genes.pep.blast6
+#sort post blast Make sure the file is sorted based on query and best hits (here bitscore > evalue > perc identity):
+export LC_ALL=C LC_LANG=C; sort -k1,1 -k12,12gr -k11,11g -k3,3gr query.fa.blastn.34708929.tsv > sorted_query.fa.blastn.34708929.tsv
+#get top 5 per query
+for next in $(cut -f1 sorted_query.fa.blastn.34708929.tsv | sort -u); do grep -w -m 1 "$next" sorted_query.fa.blastn.34708929.tsv; done > top_query.fa.blastn.34708929.tsv
+
+######## nucleotide blast
+#Make DB inside directory with pathway query genes
+interact --mem=48G --cpus-per-task=9
+mkdir db_kratom
+cd db_kratom
+cp /scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.working_models.cdna.fa .
+
+ml BLAST+/2.14.1-gompi-2023a
+
+makeblastdb -in mitr_v1.working_models.cdna.fa -parse_seqids -dbtype nucl
+
+cd ..
+
+blastn -query kratom_pathway_genes_from_allwin_updated_15jan25.fasta \
+-db db/mitr_v1.working_models.cdna.fa \
+-outfmt 6 \
+-out kratom_pathway_genes_allwin.out \
+-max_target_seqs 10 \
+-num_threads 8
+
+###
+#column names are:
+#qseqid	sseqid	pident	length	mismatch	gapopen	qstart	qend	sstart	send	evalue	bitscore
