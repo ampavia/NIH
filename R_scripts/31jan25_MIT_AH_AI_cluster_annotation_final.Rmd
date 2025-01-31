@@ -55,22 +55,26 @@ head(repr_loci)
 
 # Pull marker genes and blast hits
 ```{r}
-leaf_markers <- read_delim("/scratch/ac05869/nih/marker_genes_dionne/From_Dionne/dionne_marker_genes_list.tsv", col_types = cols())
-head(leaf_markers)
+markers <- read_delim("/scratch/ac05869/nih/marker_genes_dionne/From_Dionne/dionne_marker_genes_list.tsv", col_types = cols())
+head(markers)
+dim(markers)
 
-kratom_genes <- read_delim("/scratch/ac05869/nih/marker_genes_dionne/blast/blastn_hits.34716718.tsv", col_names = c("Ath", "gene_ID", "pident", "length", "mismatch", "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore"))
+kratom_genes <- read_delim("/scratch/ac05869/nih/marker_genes_dionne/blast/bestHits_blastn_hits.34716718.tsv", col_names = c("Ath", "gene_ID", "pident", "length", "mismatch", "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore"))
 head(kratom_genes)
 kratom_genes$Ath <- gsub("\\.\\d+$", "", kratom_genes$Ath)
 
-leaf_markers <- leaf_markers %>% 
-  left_join(kratom_genes, by = "Ath", multiple = "first") %>%
-  mutate(gene_ID.x = gene_ID) %>% 
+leaf_markers <- markers %>% 
+  left_join(kratom_genes, by = "Ath") %>%
+  mutate(gene_ID.x = gene_ID) %>%
   left_join(repr_loci, by = "gene_ID") %>%
   select(c(1:7, 15, 16, 18))
-leaf_markers$gene_ID <- gsub("\\.\\d+$", "", leaf_markers$gene_ID)
+#write.table(leaf_markers, file = "~/nih/marker_genes/mitr_v1_arab_markers.txt", col.names = T, quote = F)  
+
+leaf_markers$gene_ID <- gsub("\\.\\d+$", "", leaf_markers$gene_ID) %>%
 leaf_markers$gene_ID <- gsub(pattern = "_", replacement = "-", leaf_markers$gene_ID)
 
 head(leaf_markers)
+dim(leaf_markers)
 ```
 
 
