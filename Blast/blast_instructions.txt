@@ -40,6 +40,10 @@ blastn -query kratom_pathway_genes_from_allwin_updated_15jan25.fasta \
 #qseqid	sseqid	pident	length	mismatch	gapopen	qstart	qend	sstart	send	evalue	bitscore
 
 #sort post blast Make sure the file is sorted based on query and best hits (here bitscore > evalue > perc identity):
-export LC_ALL=C LC_LANG=C; sort -k1,1 -k12,12gr -k11,11g -k3,3gr query.fa.blastn.34708929.tsv > sorted_query.fa.blastn.34708929.tsv
+export LC_ALL=C LC_LANG=C; sort -k1,1 -k12,12gr -k11,11g -k3,3gr blastn_hits.34716718.tsv > sorted_blastn_hits.34716718.tsv
 #get top 5 per query
-for next in $(cut -f1 sorted_query.fa.blastn.34708929.tsv | sort -u); do grep -w -m 1 "$next" sorted_query.fa.blastn.34708929.tsv; done > top_query.fa.blastn.34708929.tsv
+for next in $(cut -f1 sorted_blastn_hits.34716718.tsv | sort -u); do grep -w -m 1 "$next" sorted_blastn_hits.34716718.tsv; done > top_sorted_blastn_hits.34716718.tsv
+
+#
+interact
+export LANG=C; export LC_ALL=C; sort -k1,1 -k12,12gr -k11,11g -k3,3gr blastn_hits.34716718.tsv | sort -u -k1,1 --merge > bestHits_blastn_hits.34716718.tsv
