@@ -1,11 +1,12 @@
 ---
-title: "MIT_AH_AI_cluster_annotation"
+title: "MIT_AD_AE_cluster_annotation"
 author: "Anne Pavia"
 date: "2025-01-27"
 output: html_document
 ---
 # Notes:
-This is the same as "31jan25_MIT_AH_AO...final.Rmd", except I used the top several hits between Dionne's marker genes and de-duplicated them before choosing only the top hit
+I used the best blast hit between Dionne's marker genes, but there were some kratom genes that were the same for different markers. I de-duplicated them by choosing only the match with best bitscore
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -23,10 +24,10 @@ library(patchwork)
 
 # Pull Seurat data
 ```{r}
-leaf.combined <- readRDS("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/MIT_AH_AI_cleaned_integrated_seurat_14jan25.rds")
-DefaultAssay(leaf.combined) <- "RNA"
-leaf.combined = JoinLayers(leaf.combined)
-leaf.combined.markers <- FindAllMarkers(leaf.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) %>% group_by(cluster) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+stem.combined <- readRDS("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_cleaned_integrated_seurat_09jan25.rds")
+DefaultAssay(stem.combined) <- "RNA"
+stem.combined = JoinLayers(stem.combined)
+stem.combined.markers <- FindAllMarkers(stem.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) %>% group_by(cluster) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
 ```
 
 ## Pull annotation and repr_loci
@@ -71,7 +72,7 @@ kratom_genes <- read_delim("/scratch/ac05869/nih/marker_genes_dionne/blast/bestH
 head(kratom_genes)
 kratom_genes$Ath <- gsub("\\.\\d+$", "", kratom_genes$Ath) #remove transcript syntax from arabidopsis genes
 
-leaf_markers <- markers %>% 
+stem_markers <- markers %>% 
   left_join(kratom_genes, by = "Ath") %>% #merge dionne's marker genes and kratom blast hits by arabidopsis genes
   mutate(gene_ID = str_replace(gene_ID, "\\.\\d+$", "")) %>%
   group_by(gene_ID) %>%
@@ -83,45 +84,40 @@ leaf_markers <- markers %>%
   ungroup() %>%
   mutate(gene_ID = str_replace(gene_ID, "_", "-"))
 
-#write.table(leaf_markers, file = "~/nih/marker_genes/mitr_v1_markers_04feb25.txt", col.names = T, quote = F)  
+#write.table(stem_markers, file = "~/nih/marker_genes/mitr_v1_markers_04feb25.txt", col.names = T, quote = F)  
 
-#leaf_markers$gene_ID <- gsub(pattern = "_", replacement = "-", leaf_markers$gene_ID)
-#leaf_markers$gene_ID <- gsub("\\.\\d+$", "", leaf_markers$gene_ID)
-
-dim(leaf_markers) #176
-head(leaf_markers)
+dim(stem_markers) #176
+head(stem_markers)
 ```
 
 ## Cell type assignment heatmap
+This part needs to be edited depending on the cluster numbers, gene expression, etc.
 ```{r}
-DefaultAssay(leaf.combined) <- "RNA"
+DefaultAssay(stem.combined) <- "RNA"
 
-leaf_markers2 <- leaf_markers %>% 
+stem_markers2 <- stem_markers %>% 
   dplyr::select(symbol, cell_type, gene_ID) %>%
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.19-1G001940") == F) %>%
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.08-1G000720") == F) %>% #guard cell that was expressed with phloem cells
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.20-2G008400") == F) %>% #under-expressed xylem marker
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.06-1G021870") == F) %>% #under-expressed xylem marker cluster 19
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.12-1G019890") == F) %>% # redundant xylem marker
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.16-2G012920") == F) %>% #under-expressed phloem marker
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.03-1G024630") == F) %>% #under-expressed shoot meristem marker
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.10-2G011550") == F) %>% #under-expressed proliferating marker
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.01-2G008870") == F) %>% #under-expressed G0/G1 phase marker
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.06-2G000320") == F) %>% #under-expressed xylem marker
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.01-2G008870") == F) %>% # under-expressed G0/G1 markers
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.08-1G000720") == F) %>% # guard cell marker that was coexpressed with phloem/vasculature (APL)
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.20-2G008400") == F) %>% # under expressed xylem marker
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.19-1G001940") == F) %>% # under-expressed xylem marker
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.16-2G012920") == F) %>% # under-expressed phloem marker
   dplyr::filter(is.na(gene_ID) == F)
   
-Marker_dotplot <- DotPlot(leaf.combined, 
-                          features = unique(leaf_markers2$gene_ID)) 
+Marker_dotplot <- DotPlot(stem.combined, 
+                          features = unique(stem_markers2$gene_ID)) 
 head(Marker_dotplot$data)
 
 Marker_dotplot_nice_df <- Marker_dotplot$data %>% 
   mutate(gene_ID = row.names(.)) %>% 
   mutate(gene_ID = str_sub(gene_ID, end = 15)) %>% 
-  full_join(leaf_markers2 %>% 
+  full_join(stem_markers2 %>% 
               distinct(gene_ID, .keep_all = T),
              by = c("features.plot" = "gene_ID")) %>% 
    mutate(cell_type2 = case_when(
     str_detect(cell_type, "meso") ~ "M",
-    str_detect(cell_type, "cam|x|phl|com|vas") ~ "V",
+    str_detect(cell_type, "cam|x|phl|com|vas|trach") ~ "V",
     str_detect(cell_type, "epi") ~ "E",
     str_detect(cell_type, "guard") ~ "GC",
     str_detect(cell_type, "IPAP") ~ "IP",
@@ -138,22 +134,23 @@ Marker_dotplot_nice_df <- Marker_dotplot$data %>%
   mutate(features.plot = reorder(features.plot, cell_type3, decreasing = T)) %>% 
   dplyr::filter(is.na(avg.exp.scaled) == F)%>%
   mutate(tag = paste(features.plot, cell_type2)) %>%
-  mutate(id = factor(id, levels = c(
-    "0", "2", "3", "7", "8", "11", "15", "17", "22",
-    "1", "6", "10", "14", "16",
-    "9","21", "12", "13", "18",
-    "4", "5","19", "20"
-    )))
+  mutate(id = factor(id, levels = c("1", "2", "4", "5", "7", "9", "19", "23",
+                                    "20",
+                                    "6", "22", "10", "15", "17", "0", "3", "8",
+                                    "12", "14", "13", "18", 
+                                    "11", "16", "21"
+                                    )))
 
 dim(Marker_dotplot_nice_df) #552
 head(Marker_dotplot_nice_df)
 ```
 
-* Mesophyll: "0", "2", "3", "7", "8", "11", "15", "17", "22",
-* Epi: "1", "6", "10", "14", "16",
+* Mesophyll: "1", "2", "4", "5", "7", "9", "19", "23",
+* Epi: "20",
 * Guard: 
-* Vasculature: "9","21", "12", "13", "18",
-* Un: "4", "5", "7", "15", "19", "20"
+* Vasculature: "0", "3", "6", "22", "8", "10", "15", "17",
+* SAM: "12", "14", "13", "18", 
+* Un: "11", "16", "21" 
 
 ```{r}
 Marker_dot <- Marker_dotplot_nice_df %>% 
@@ -173,17 +170,17 @@ Marker_dot <- Marker_dotplot_nice_df %>%
         legend.key.height = unit(0.7, "lines"))
 
 Marker_dot
-ggsave("/scratch/ac05869/nih/kratom/unordered_MIT_AH_AI_clusters_with_Dionne_deduplicated_markers_04feb25.png", width = 10, height = 8)
+ggsave("/scratch/ac05869/nih/kratom/MIT_AD_AE_clusters_with_Dionne_markers_05feb25.png", width = 10, height = 8)
 ```
 
-#Merge seurat cluster top marker file with leaf_markers to identify top markers for each cluster
+#Merge seurat cluster top marker file with stem_markers to identify top markers for each cluster
 ```{r}
-cluster_markers <- read_delim("/scratch/ac05869/nih/kratom_pathway/MIT_AH_AI_clean_integrated_all_markers_minpct0.25_minlfc0.25_with_info_30jan25.txt", delim = "\t", col_names = T) %>% rename("gene_ID" = "ID")
+cluster_markers <- read_delim("/scratch/ac05869/nih/kratom_pathway/MIT_AD_AE_clean_integrated_all_markers_minpct0.25_minlfc0.25_with_info_30jan25.txt", delim = "\t", col_names = T) %>% rename("gene_ID" = "ID")
 cluster_markers$gene_ID <- gsub(pattern = "_", replacement = "-", cluster_markers$gene_ID)
 head(cluster_markers)
-head(leaf_markers)
+head(stem_markers)
 
-cluster_markers2 <- inner_join(cluster_markers, leaf_markers, by = "gene_ID") %>% 
+cluster_markers2 <- inner_join(cluster_markers, stem_markers, by = "gene_ID") %>% 
   group_by(cluster) %>%
   select(1, 11, 2, 13, 12, 8, 9, 10, 14, 17, 21)
 head(cluster_markers2)
@@ -191,61 +188,66 @@ head(cluster_markers2)
 #remove commas from Reference column in order to write csv file
 cluster_markers2 <- cluster_markers2 %>%
   mutate(Reference = str_replace(Reference, ",", " ")) %>%
-           write_csv(file = "~/nih/marker_genes/merged_Dionne_markers_MIT_AH_AI_all_markers_minpct0.25_minlfc0.25_05feb25.csv", quote = "none")
+           write_csv(file = "~/nih/marker_genes/merged_Dionne_markers_MIT_AD_AE_all_markers_minpct0.25_minlfc0.25_05feb25.csv", quote = "none")
 head(cluster_markers2)
 ```
-* Mesophyll: "0", "2", "3", "7", "8", "11", "15", "17", "22",
-* Epi: "1", "6", "10", "14", "16",
+
+* Mesophyll: "1", "2", "4", "5", "7", "9", "19", "23",
+* Epi: "20",
 * Guard: 
-* Vasculature: "9","21", "12", "13", "18",
-* Un: "4", "5", "19", "20"
+* Vasculature: "0", "3", "6", "22", "8", "10", "15", "17",
+* SAM: "12", "14", "13", "18", 
+* Un: "11", "16", "21" 
 
 ```{r}
-leaf_cell_type_assignment <- data.frame(
-  cluster = c(0:22)
+stem_cell_type_assignment <- data.frame(
+  cluster = c(0:23)
 ) %>% 
   mutate(cell_type = case_when(
-    cluster == 0 |
-      cluster == 2 |
-      cluster == 3 |
-      cluster == 7 |
-      cluster == 8 | 
-      cluster == 11 |
-      cluster == 15 |
-      cluster == 17 |
-      cluster == 22  ~ "Mesophyll",
     cluster == 1 |
+      cluster == 2 |
+      cluster == 4 |
+      cluster == 5 |
+      cluster == 7 |
+      cluster == 9 | 
+      cluster == 19 |
+      cluster == 23 ~ "Mesophyll",
+    cluster == 20 ~ "Epidermis",
+    cluster == 0 |
+      cluster == 3 |
       cluster == 6 |
+      cluster == 22 |
+      cluster == 8 |
       cluster == 10 |
+      cluster == 15 |
+      cluster == 17  ~ "Vasculature",
+    cluster == 12 |
       cluster == 14 |
-      cluster == 16 ~ "Epidermis",
-    cluster == 9 |
-      cluster == 21 |
-      cluster == 12 |
       cluster == 13 |
-      cluster == 18  ~ "Vasculature",
-    cluster == 4 |
-      cluster ==5 |
-      cluster ==19 |
-      cluster == 20 ~ "Unassigned"
+      cluster == 18 ~ "SAM",
+    cluster == 11 |
+      cluster == 16 |
+      cluster ==21 ~ "Unassigned"
   )) %>% 
   mutate(cell_type = factor(cell_type, 
                             levels = c(
-                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Mesophyll", "Epidermis",
                               "Vasculature", 
+                              "SAM",
                               "Unassigned"
                             ))) %>% 
   mutate(cluster = factor(cluster, levels = c(
-     "0", "2", "3", "7", "8", "11", "15", "17", "22",
-     "1", "6", "10", "14", "16",
-     "9","21", "12", "13", "18",
-     "4", "5", "19", "20"
+     "1", "2", "4", "5", "7", "9", "19", "23",
+     "20",
+     "0", "3", "6", "22", "8", "10", "15", "17",
+     "12", "14", "13", "18",
+     "11", "16", "21" 
     )))
 ```
 
 
 ```{r}
-Leaf_cell_type_strip <- leaf_cell_type_assignment %>% 
+Leaf_cell_type_strip <- stem_cell_type_assignment %>% 
   ggplot(aes(x = cluster, y = "" )) +
   geom_tile(aes(fill = cell_type)) +
   scale_fill_manual(values = c(brewer.pal(6, "Accent"), "grey80")) +
@@ -279,8 +281,8 @@ Marker_dot_strip <- wrap_plots(Marker_dot, Leaf_cell_type_mkr_text,
 
 Marker_dot_strip
 
-ggsave("/scratch/ac05869/nih/kratom/MIT_AH_AI_cell_type_assignment_plot.svg", height = 8, width = 7.5, bg = "white")
-ggsave("/scratch/ac05869/nih/kratom/MIT_AH_AI_cell_type_assignment_plot.png", height = 6, width = 7.5, bg = "white")
+ggsave("/scratch/ac05869/nih/kratom/MIT_AD_AE_cell_type_assignment_plot.svg", height = 8, width = 7.5, bg = "white")
+ggsave("/scratch/ac05869/nih/kratom/MIT_AD_AE_cell_type_assignment_plot.png", height = 6, width = 7.5, bg = "white")
 ```
 
 
