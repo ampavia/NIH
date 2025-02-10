@@ -5,7 +5,7 @@ date: "2025-01-27"
 output: html_document
 ---
 # Notes:
-I used the best blast hit between Dionne's marker genes, but there were some kratom genes that were the same for different markers. I de-duplicated them by choosing only the match with best bitscore
+I used the best blast hit between Dionne's TAIR marker genes (which includes Li's markers too) and Li's IPAP marker gene from Cro_v3
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -30,7 +30,8 @@ stem.combined = JoinLayers(stem.combined)
 stem.combined.markers <- FindAllMarkers(stem.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) %>% group_by(cluster) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
 ```
 
-## Pull annotation and repr_loci
+## Pull annotation and repr loci
+
 ```{r}
 repr_gene_models <- read_delim("/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.hc_gene_models.repr.gff3",
                                delim = "\t", col_names = F)
@@ -43,8 +44,6 @@ repr_loci <- repr_gene_models %>%
   separate(ID, c("temp", "gene_ID"), sep = "=") %>% 
   dplyr::select(-temp) %>% 
   mutate(LocusID = str_sub(gene_ID, start = 1, end = 13)) %>% 
-  mutate(gene_ID = str_replace(gene_ID, "_", "-")) %>% 
-  mutate(LocusID = str_replace(LocusID, "_", "-")) %>% 
   dplyr::rename(
     Chr = X1,
     start = X4,
@@ -53,42 +52,112 @@ repr_loci <- repr_gene_models %>%
   )
 head(repr_loci)
 
-anno <- read.delim(file = "/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.functional_annotation.txt", header = FALSE, sep = "\t", col.names = c("gene_ID", "functional_annotation")) %>% 
-  #mutate(gene_ID = str_replace(gene_ID, "_", "-")) %>%
-  mutate(gene_ID = str_replace(gene_ID, "\\.\\d+$", ""))
-head(anno)
-dim(anno)
-
-head(anno_repr_loci <- inner_join(anno, repr_loci, by= "gene_ID"))
+gene_anno <- read_delim("/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.functional_annotation.txt",
+                               delim = "\t", col_names = c("gene_ID", "annotation"))
+head(gene_anno)
 ```
 
 # Pull marker genes and blast hits
 ```{r}
 markers <- read_delim("/scratch/ac05869/nih/marker_genes_dionne/From_Dionne/dionne_marker_genes_list.tsv", col_types = cols())
 head(markers)
-dim(markers)
+dim(markers) #176
 
-kratom_genes <- read_delim("/scratch/ac05869/nih/marker_genes_dionne/blast/bestHits_blastn_hits.34761323.tsv", col_names = c("Ath", "gene_ID", "pident", "length", "mismatch", "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore"))
+kratom_genes <- read_delim("/scratch/ac05869/nih/marker_genes_dionne/blast/bestHits_blastn_hits.34761323.tsv", col_names = c("query", "gene_ID", "pident", "length", "mismatch", "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore"))
 head(kratom_genes)
-kratom_genes$Ath <- gsub("\\.\\d+$", "", kratom_genes$Ath) #remove transcript syntax from arabidopsis genes
+dim(kratom_genes) #32; bestHits is the top hit of multiple blast hits
+kratom_genes$query <- gsub("\\.\\d+$", "", kratom_genes$query) #remove transcript syntax from arabidopsis genes
 
 stem_markers <- markers %>% 
-  left_join(kratom_genes, by = "Ath") %>% #merge dionne's marker genes and kratom blast hits by arabidopsis genes
-  mutate(gene_ID = str_replace(gene_ID, "\\.\\d+$", "")) %>%
+  left_join(kratom_genes, by = "query") %>% #merge dionne's marker genes and kratom blast hits by arabidopsis genes
+  rbind(list("IPAP", "7DLH", "CRO_03G018360", "Li et al.", "7-deoxyloganic acid hydroxylase", "Mitsp.v1.21_1G007810.1", 75.085, 293, 65, 8, 1530, 1818, 991, 1279, 3.50e-28, 130)) %>% #manually added the top hit for Li's IPAP marker from Cro_v3 blast run
   group_by(gene_ID) %>%
   arrange(bitscore, .by_group = TRUE) %>% #arrange multiple hits to the same arabidopsis gene by bitscore
   distinct(gene_ID, .keep_all = T) %>% #keep top hit with highest bitscore in multiple 
   #distinct(Ath, .keep_all = T) %>%
-  left_join(anno, by = "gene_ID", multiple = "first") %>%
-  select(c(1:5, 17, 6:9, 15:16)) %>%
-  ungroup() %>%
-  mutate(gene_ID = str_replace(gene_ID, "_", "-"))
+  left_join(repr_loci, by = "gene_ID") %>%
+  select(c(1, 3, 6, 2, 5, 4, 7, 17:20)) %>%
+  left_join(gene_anno, by = "gene_ID", multiple = "first") %>%
+  mutate(gene_ID = str_replace(gene_ID, "_", "-")) %>%
+  mutate(gene_ID = str_replace(gene_ID, "\\.\\d+$", ""))
 
-#write.table(stem_markers, file = "~/nih/marker_genes/mitr_v1_markers_04feb25.txt", col.names = T, quote = F)  
+#write_csv(leaf_markers, "/scratch/ac05869/nih/marker_genes_dionne/Annotated_markers_TAIR_Cro_v1_Mitr_v1.csv") #This is a table of the list of kratom genes that had a match in arabidopsis, cro_v3, and its annotation
 
-dim(stem_markers) #176
+dim(stem_markers) #32
 head(stem_markers)
 ```
+## Cell type assignment heatmap
+
+# View Seurat cluster genes and merge with annotation file
+```{r}
+stem.combined.markers2 <- stem.combined.markers %>%
+  rename(gene_ID = gene) #I want to merge with annotation data in order to know what cluster's are what cell type
+head(stem.combined.markers2)
+
+gene_anno$gene_ID <- gsub("\\.\\d+$", "", gene_anno$gene_ID)
+gene_anno$gene_ID <- gsub(pattern = "_", replacement = "-", gene_anno$gene_ID)
+
+cluster_anno <- left_join(stem.combined.markers2, gene_anno, by = "gene_ID", multiple = "first")
+
+head(cluster_anno)
+```
+# Dotplot
+
+```{r}
+DefaultAssay(stem.combined) <- "RNA"
+
+stem_markers2 <- stem_markers %>% 
+  dplyr::select(symbol, Full_name, cell_type, gene_ID, annotation) %>% 
+  # rbind(stem_markers) %>% 
+  dplyr::filter(is.na(gene_ID) == F)
+  
+Marker_dotplot <- DotPlot(stem.combined, 
+                          features = unique(stem_markers2$gene_ID))
+
+Marker_dotplot_nice_df <- Marker_dotplot$data %>% 
+  mutate(gene_ID = row.names(.)) %>% 
+#  mutate(gene_ID = str_sub(gene_ID, end = 15)) %>% 
+  full_join(stem_markers2 %>% 
+              distinct(gene_ID, .keep_all = T),
+             by = c("features.plot" = "gene_ID")) %>% 
+   mutate(cell_type2 = case_when(
+    str_detect(cell_type, "meso") ~ "M",
+    str_detect(cell_type, "cam") ~ "Cam",
+    str_detect(cell_type, "xyl") ~ "X",
+    str_detect(cell_type, "phl") ~ "Ph",
+    str_detect(cell_type, "com") ~ "Com",
+    str_detect(cell_type, "vas | tra") ~ "V",
+    str_detect(cell_type, "epi") ~ "E",
+    str_detect(cell_type, "guard") ~ "GC",
+    str_detect(cell_type, "IPAP") ~ "IP",
+    str_detect(cell_type, "idioblast")  ~ "I",
+    str_detect(cell_type, "G2")  ~ "G2",
+    str_detect(cell_type, "G0/G1")  ~ "G0/G1",
+    str_detect(cell_type, "pro")  ~ "Pro",
+    str_detect(cell_type, "shoot") ~ "SAM",
+    str_detect(cell_type, "trich") ~ "TRI",
+    str_detect(cell_type, "cortex") ~ "C"
+  )) %>%
+  dplyr::filter(str_detect(cell_type, "shea") == F) %>% 
+  mutate(cell_type2 = factor(cell_type2, levels = c(
+    "M", "E", "GC", "V", "X", "Ph", "Cam", "Com", "IP", "I", "Pro", "G0/G1", "G2", "SAM", "TRI", "C"
+  ))) %>% 
+  mutate(cell_type3 = as.numeric(cell_type2)) %>% 
+  mutate(features.plot = reorder(features.plot, cell_type3, decreasing = T)) %>% 
+  dplyr::filter(is.na(avg.exp.scaled) == F)%>%
+  mutate(tag = paste(features.plot, cell_type2)) %>%
+  mutate(id = factor(id, levels = c("1", "2", "4", "5", "7", "9", "19", "23",
+                                    "20",
+                                    "6", "22", "10", "15", "17", "0", "3", "8",
+                                    "12", "14", "13", "18", 
+                                    "11", "16", "21"
+                                    )))
+
+head(Marker_dotplot_nice_df) #667
+
+#View this and compare with cluster_anno df
+```
+
 
 ## Cell type assignment heatmap
 This part needs to be edited depending on the cluster numbers, gene expression, etc.
