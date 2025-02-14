@@ -27,30 +27,35 @@ leaf.combined <- readRDS("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom
 DefaultAssay(leaf.combined) <- "RNA"
 leaf.combined = JoinLayers(leaf.combined)
 leaf.combined.markers <- FindAllMarkers(leaf.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+
+#define cluster numbers
+clusters <- c(0:22)
 ```
 
 
 # Pull marker genes and Seurat markers
 ```{r}
-leaf_markers <- read_csv("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_seurat_markers_with_pop_markers_12feb25.csv", col_names = T)
+leaf_markers <- read_csv("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_seurat_markers_with_pop_markers_14feb25.csv", col_names = T)
 head(leaf_markers)
 dim(leaf_markers) #248
 
 leaf_markers2 <- leaf_markers %>% 
-  dplyr::select(symbol, cell_type, gene_ID, functional_annotation) %>% 
-  # rbind(leaf_markers) %>%
+  dplyr::select(Primary_Gene_Symbol, cell_type, gene_ID, functional_annotation) %>%
   dplyr::filter(is.na(gene_ID) == F)
+head(leaf_markers2)
 ```
 
 
-## Cell type assignment heatmap
-# Dotplot
-
+# Cell type assignment heatmap
 ```{r}
 DefaultAssay(leaf.combined) <- "RNA"
 
 Marker_dotplot <- DotPlot(leaf.combined, 
                           features = unique(leaf_markers2$gene_ID))
+
+cells <- c(
+    "M", "E", "GC", "V", "X", "Ph", "Cam", "Com", "IP", "Idi", "Pro", "G0/G1", "G2", "SAM", "TRI", "Ray"
+  )
 
 Marker_dotplot_nice_df <- Marker_dotplot$data %>% 
   rownames_to_column(var = "gene_ID") %>%
@@ -69,8 +74,9 @@ Marker_dotplot_nice_df <- Marker_dotplot$data %>%
       str_detect(cell_type, "cortex") ~ "V",
     str_detect(cell_type, "epi") ~ "E",
     str_detect(cell_type, "guard") ~ "GC",
-    str_detect(cell_type, "IPAP") ~ "IP",
-    str_detect(cell_type, "idioblast")  ~ "I",
+    str_detect(cell_type, "iridoid") |
+      str_detect(cell_type, "IPAP") ~ "IP",
+    str_detect(cell_type, "idioblast")  ~ "Idi",
     str_detect(cell_type, "G2")  ~ "G2",
     str_detect(cell_type, "G0/G1")  ~ "G0/G1",
     str_detect(cell_type, "pro") |
@@ -80,99 +86,24 @@ Marker_dotplot_nice_df <- Marker_dotplot$data %>%
     str_detect(cell_type, "ray") ~ "Ray",
   )) %>%
   dplyr::filter(str_detect(cell_type, "shea") == F) %>% 
-  mutate(cell_type2 = factor(cell_type2, levels = c(
-    "M", "E", "GC", "V", "X", "Ph", "Cam", "Com", "IP", "I", "Pro", "G0/G1", "G2", "SAM", "TRI", "Ray"
-  ))) %>% 
+  mutate(cell_type2 = factor(cell_type2, levels = cells)) %>% 
   mutate(cell_type3 = as.numeric(cell_type2)) %>% 
   mutate(features.plot = reorder(features.plot, cell_type3, decreasing = T)) %>% 
   dplyr::filter(is.na(avg.exp.scaled) == F)%>%
-  mutate(tag = paste(features.plot, cell_type2)) %>%
-  mutate(id = factor(id, levels = c(
-    "0", "2", "3", "7", "8", "11", "15", "17",
-    "1", "6", "10", "14", "16",
-    "9","21", "12", "13", "18",
-    "22",
-    "4", "5","19", "20"
-    )))
+  mutate(tag = paste(features.plot, Primary_Gene_Symbol)) %>%
+  mutate(id = factor(id, levels = as.character(clusters)))
 
-head(Marker_dotplot_nice_df) #667
-
+head(Marker_dotplot_nice_df)
 #View this and compare
 ```
 
-## Filter out genes that don't belong in leaf
-```{r}
-leaf_markers2 <- leaf_markers %>% 
-  dplyr::select(symbol, cell_type, gene_ID) %>%
-  dplyr::filter(str_detect(gene_ID, "2") == T) %>%
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.12-1G004200") == F) %>% # root cortext not in leaf
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.08-2G000560") == F) %>% #guard cell that was expressed with phloem cells
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.20-2G008400") == F) %>% #under-expressed xylem marker
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.06-1G021870") == F) %>% #under-expressed xylem marker cluster 19
-#  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.12-1G019890") == F) %>% # redundant xylem marker
-#  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.16-2G012920") == F) %>% #under-expressed phloem marker
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.10-2G011550") == F) %>% #under-expressed proliferating marker
-#  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.01-2G008870") == F) %>% #under-expressed G0/G1 phase marker
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.19-2G000490") ==F) %>% # not expressed XYLEM CYSTEINE PEPTIDASE 1
-  dplyr::filter(str_detect(cell_type, "shoot") == F) %>%
-  dplyr::filter(is.na(gene_ID) == F)
-  
-Marker_dotplot <- DotPlot(leaf.combined, 
-                          features = unique(leaf_markers2$gene_ID)) 
-head(Marker_dotplot$data)
-
-Marker_dotplot_nice_df <- Marker_dotplot$data %>% 
-  mutate(gene_ID = row.names(.)) %>% 
-  mutate(gene_ID = str_sub(gene_ID, end = 15)) %>% 
-  full_join(leaf_markers2 %>% 
-              distinct(gene_ID, .keep_all = T),
-             by = c("features.plot" = "gene_ID")) %>% 
-   mutate(cell_type2 = case_when(
-    str_detect(cell_type, "meso") ~ "M",
-    str_detect(cell_type, "cam") ~ "Cam",
-    str_detect(cell_type, "xyl") |
-      str_detect(cell_type, "vessel") ~ "X",
-    str_detect(cell_type, "phl") |
-      str_detect(cell_type, "sieve") ~ "Ph",
-    str_detect(cell_type, "com") ~ "Com",
-    str_detect(cell_type, "vas") |
-      str_detect(cell_type, "cortex") ~ "V",
-    str_detect(cell_type, "epi") ~ "E",
-    str_detect(cell_type, "guard") ~ "GC",
-    str_detect(cell_type, "IPAP") ~ "IP",
-    str_detect(cell_type, "idioblast")  ~ "I",
-    str_detect(cell_type, "G2")  ~ "G2",
-    str_detect(cell_type, "G0/G1")  ~ "G0/G1",
-    str_detect(cell_type, "pro") |
-    str_detect(cell_type, "Unkn") ~ "Pro",
-    str_detect(cell_type, "shoot") ~ "SAM",
-    str_detect(cell_type, "trich") ~ "TRI",
-    str_detect(cell_type, "ray") ~ "Ray",
-  )) %>%
-  dplyr::filter(str_detect(cell_type, "shea") == F) %>% 
-  mutate(cell_type2 = factor(cell_type2, levels = c(
-    "M", "E", "GC", "V", "X", "Ph", "Cam", "Com", "IP", "I", "Pro", "G0/G1", "G2", "SAM", "TRI", "Ray"
-  ))) %>% 
-  mutate(cell_type3 = as.numeric(cell_type2)) %>% 
-  mutate(features.plot = reorder(features.plot, cell_type3, decreasing = T)) %>% 
-  dplyr::filter(is.na(avg.exp.scaled) == F)%>%
-  mutate(tag = paste(features.plot, cell_type2)) %>%
-  mutate(id = factor(id, levels = c(
-    "0", "2", "3", "7", "8",
-    "1", "6", "10", "14", "16",
-    "12", "13", "18",
-    "9", "21", 
-    "22",
-    "4", "5", "14", "16", "17", "19", "20"
-    )))
-
-dim(Marker_dotplot_nice_df) #1886
-head(Marker_dotplot_nice_df)
-```
+# Specificity of cell type markers
 
 ```{r}
+list(cells)
+cell <- "E" #filter by cell_type2 to see what markers are cluster specific
 Marker_dot <- Marker_dotplot_nice_df %>% 
-  filter(str_detect(cell_type2, "V") == T) %>%
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
   ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
   geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
   scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
@@ -180,7 +111,8 @@ Marker_dot <- Marker_dotplot_nice_df %>%
   labs(x = "Cluster",
        y = NULL, 
        fill = "Avg. Exp.",
-       size = "% Exp.") +
+       size = "% Exp.",
+       title = "Epidermal") +
   theme_classic() +
   theme(text = element_text(size = 10, color = "black"),
         axis.text = element_text(color = "black"),
@@ -189,15 +121,403 @@ Marker_dot <- Marker_dotplot_nice_df %>%
         legend.key.height = unit(0.7, "lines"))
 
 Marker_dot
-#ggsave("/scratch/ac05869/nih/kratom/MIT_AH_AI_marked_clusters_10feb25.png", width = 10, height = 8)
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_epidermal_markers.png", width = 10, height = 8)
+```
+
+```{r}
+list(cells)
+cell <- "M" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Mesophyll") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_mesophyll_markers.png", width = 10, height = 8)
+```
+
+```{r}
+list(cells)
+cell <- "V" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Vasculature (Xylem/Phloem)") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_VasculatureMixed_markers.png", width = 10, height = 8)
+```
+
+```{r}
+list(cells)
+cell <- "X" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Xylem") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_xylem_markers.png", width = 10, height = 8)
+```
+
+```{r}
+list(cells)
+cell <- "Ph" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Phloem") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_Phloem_markers.png", width = 10, height = 8)
+```
+
+```{r}
+list(cells)
+cell <- "Cam" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Cambium") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_Cambium_markers.png", width = 10, height = 8)
+```
+
+```{r}
+list(cells)
+cell <- "Com" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Companion Cells") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_CompanionCells_markers.png", width = 10, height = 8)
+```
+```{r}
+list(cells)
+cell <- "GC" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Guard Cells") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_GuardCells_markers.png", width = 10, height = 8)
+```
+```{r}
+list(cells)
+cell <- "IP" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "IPAP/Iridoid+") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_IPAP_markers.png", width = 10, height = 8)
+```
+
+```{r}
+list(cells)
+cell <- "Id" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Idioblast") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_Idioblast_markers.png", width = 10, height = 8)
+```
+
+```{r}
+list(cells)
+cell <- "Pro" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Proliferating") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_Proliferating_markers.png", width = 10, height = 8)
+```
+```{r}
+list(cells)
+cell <- "G0/G1" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "G0/G1") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_G0_G1_phase_markers.png", width = 10, height = 8)
+```
+```{r}
+list(cells)
+cell <- "G2" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "G2") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_G2_phase_markers.png", width = 10, height = 8)
+```
+
+```{r}
+list(cells)
+cell <- "SAM" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Shoot apical meristem") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_SAM_markers.png", width = 10, height = 8)
+```
+
+```{r}
+list(cells)
+cell <- "TRI" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Trichomes") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_Trichome_markers.png", width = 10, height = 8)
+```
+
+```{r}
+list(cells)
+cell <- "Ray" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Early Ray Parenchyma") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_RayParenchyma_markers.png", width = 10, height = 8)
 ```
 
 * M: "0", "2", "3", "7", "8", 
 * Epi: "1", "6", "10", "14", "16",
-* Xylem: "12", "13", "18,
-* Phloem/Cam/Com: "9", "21", 
-* IPAP: "22",
+* Xylem: "12", "13", "18, (and "5", "19",)
+* Vasc: "5", 19", (xylem)
+* Phloem: "9, "15", (possibly 18 SUC2)
+* Cambium: "12", 13",
+* Companion cells: "9", "21", (phloem)
+* IPAP: "20",
 * Unspecified: "4", "5", "14", "16", "17", "19", "20"
+
+ c(
+    "0", "2", "3", "7", "8", "11", "15", "17",
+    "1", "6", "10", "14", "16",
+    "9","21", "12", "13", "18",
+    "22",
+    "4", "5","19", "20"
+
+```{r}
+remove <- c(
+  "CAB3"
+  )
+```
+
 
 ```{r}
 leaf_cell_type_assignment <- data.frame(
@@ -244,6 +564,15 @@ leaf_cell_type_assignment <- data.frame(
     )))
 ```
 
+## Filter out genes that don't belong in leaf
+```{r}
+leaf_markers2 <- leaf_markers %>% 
+  dplyr::select(Primary_Gene_Symbol, cell_type, gene_ID) %>%
+  dplyr::filter(str_detect(Primary_Gene_Symbol, remove) == F) %>%
+
+```
+
+
 
 ```{r}
 Leaf_cell_type_strip <- leaf_cell_type_assignment %>% 
@@ -263,7 +592,7 @@ Leaf_cell_type_strip
 Leaf_cell_type_mkr_text <- Marker_dotplot_nice_df %>% 
   dplyr::filter(id == 0) %>% 
   ggplot(aes(x = "", y = reorder(tag, cell_type3, decreasing = TRUE))) +
-  geom_text(aes(label = unique(symbol), fontface = "italic")) +
+  geom_text(aes(label = unique(Primary_Gene_Symbol), fontface = "italic")) +
   theme_void()
 
 blank <- data.frame(
