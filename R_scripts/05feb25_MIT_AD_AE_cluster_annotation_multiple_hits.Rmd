@@ -72,8 +72,8 @@ Marker_dotplot_nice_df <- Marker_dotplot$data %>%
     str_detect(cell_type, "phl") |
       str_detect(cell_type, "sieve") ~ "Ph",
     str_detect(cell_type, "com") ~ "Com",
-    str_detect(cell_type, "vas") |
-      str_detect(cell_type, "cortex") ~ "V",
+    str_detect(cell_type, "vas") ~ "V",
+    str_detect(cell_type, "cortex") ~ "C/Pi",
     str_detect(cell_type, "epi") ~ "E",
     str_detect(cell_type, "guard") ~ "GC",
     str_detect(cell_type, "iridoid") |
