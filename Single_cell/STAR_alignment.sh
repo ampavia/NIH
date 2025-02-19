@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=STAR_alignment		# Job name 
 #SBATCH --partition=batch		# Partition name (batch, highmem_p, or gpu_p)
-#SBATCH --ntasks=12		# aka threads. Each task by default using 1 CPU core on a single node
+#SBATCH --ntasks=1		# aka threads. Each task by default using 1 CPU core on a single node
 #SBATCH --cpus-per-task=24	 	# CPU core count per task, by default 1 CPU core per task
 #SBTACH --array=1-2				# Array element range from 0 to 1, i.e. 2 element jobs
 #SBATCH --mem=150GB			# Memory per node (30GB); by default using M as unit
@@ -12,10 +12,10 @@
 #SBATCH --mail-type=END,FAIL          	# Mail events (BEGIN, END, FAIL, ALL)
 
 ################################################################################
-#Project: Star alignment R2 and R1
-#       Script function: map reads
+#Project: Single Cell pipeline
+#       Script function: mapping R2 and R1 to genome index
 #       Input: genome index and barcoded fastq reads 2 and 1
-#       Output: BAM and bam.bai
+#       Output: BAM
 ################################################################################
 #INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt
 LIB=`head -n ${SLURM_ARRAY_TASK_ID} ${INFILE} | cut -f 1 | tail -n 1`
@@ -50,11 +50,6 @@ STAR --runThreadN 24 \
 --soloFeatures GeneFull \
 --soloCellFilter EmptyDrops_CR \
 --soloMultiMappers EM \
-
-#index bam file
-ml purge
-ml SAMtools/1.14-GCC-11.2.0
-samtools index -@ 6 ${LIB}_Aligned.sortedByCoord.out.bam
 
 #Parameters 
 #sbatch --array 1-2 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt ~/NIH/Single_cell/STAR_alignment.sh
