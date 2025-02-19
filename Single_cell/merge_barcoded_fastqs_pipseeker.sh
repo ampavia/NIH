@@ -18,15 +18,14 @@
 #       Output 1: all_barcoded_R*.fastq.gz
 ################################################################################
 
-#INFILE=/scratch/ac05869/nih/kratom/rawdata/kratom_leaf.txt
+#INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt
 
+OUTDIR="/scratch/ac05869/KRT_AA_AB_sc/wd"
+cd ${OUTDIR}
 LIB=`head -n ${SLURM_ARRAY_TASK_ID} ${INFILE} | cut -f 1 | tail -n 1`
 
-cd /scratch/ac05869/nih/kratom/pipseeker/${LIB}/barcoded_fastqs
-
-cat barcoded_*_R1.fastq.gz > ${LIB}_all_barcoded_R1.fastq.gz
-cat barcoded_*_R2.fastq.gz > ${LIB}_all_barcoded_R2.fastq.gz
+cat ../${LIB}/barcoded_fastqs/barcoded_*_R1.fastq.gz > ${LIB}_all_barcoded_R1.fastq.gz
+cat ../${LIB}/barcoded_fastqs/barcoded_*_R2.fastq.gz > ${LIB}_all_barcoded_R2.fastq.gz
 
 #Parameters 
-
-#sbatch --array 1-2 --export=INFILE=/scratch/ac05869/nih/kratom/rawdata/kratom_leaf.txt /home/ac05869/nih/kratom/merge_barcoded_fastqs_pipseeker.sh
+#sbatch --array 1-2 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt /home/ac05869/NIH/Single_cell/merge_barcoded_fastqs_pipseeker.sh
