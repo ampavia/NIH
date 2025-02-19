@@ -4,7 +4,7 @@
 #SBATCH --ntasks=12		# aka threads. Each task by default using 1 CPU core on a single node
 #SBATCH --cpus-per-task=24	 	# CPU core count per task, by default 1 CPU core per task
 #SBTACH --array=1-2				# Array element range from 0 to 1, i.e. 2 element jobs
-#SBATCH --mem=256GB			# Memory per node (30GB); by default using M as unit
+#SBATCH --mem=150GB			# Memory per node (30GB); by default using M as unit
 #SBATCH --time=48:00:00              	# Time limit hrs:min:sec or days-hours:minutes:seconds
 #SBATCH --output=/scratch/ac05869/KRT_AA_AB_sc/err_out/%x_%j.out		# Standard output log
 #SBATCH --error=/scratch/ac05869/KRT_AA_AB_sc/err_out/%x_%j.err		# Standard error log
