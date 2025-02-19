@@ -1,7 +1,7 @@
 ---
-title: "Kratom Stem Coexpression"
+title: "CoExp_MIT_AD_AE_no_gene_selection"
 author: "Anne Pavia"
-date: "2025-02-17"
+date: "2025-02-18"
 output: html_document
 ---
 
@@ -37,6 +37,7 @@ colnames(Exp_table) <- as.factor(c(0:23))
 head(Exp_table)
 dim(Exp_table)
 ```
+
 ```{r}
 Baits <- read_delim("/scratch/ac05869/nih/coexpression/kratom_stem/Data/iridoid_bait_genes.txt", delim = "\t", col_names = F, col_types = cols())
 ```
@@ -69,101 +70,11 @@ Exp_table_long_averaged_z <- Exp_table_long_averaged %>%
 
 head(Exp_table_long_averaged_z)
 ```
-## Gene selection
-
-```{r}
-high_var_genes <- Exp_table_long_averaged_z %>% 
-  group_by(gene_ID) %>% 
-  summarise(var = var(avg_exp)) %>% 
-  ungroup() %>% 
-  filter(var > quantile(var, 0.667))
-
-head(high_var_genes)
-dim(high_var_genes)
-```
-20546 highly variable genes
-```{r}
-high_var_genes5000 <- high_var_genes %>% 
-  slice_max(order_by = var, n = 5000) 
-
-head(high_var_genes5000)
-```
-
-```{r}
-high_var_genes5000 %>% 
-  filter(str_detect(gene_ID, Baits$X2[1]))
-
-high_var_genes5000 %>% 
-  filter(str_detect(gene_ID, Baits$X2[2]))
-```
-
-Both found in top 5000 variable genes.
-
-```{r}
-Exp_table_long_averaged_z_high_var <- Exp_table_long_averaged_z %>% 
-  filter(gene_ID %in% high_var_genes5000$gene_ID)
-
-head(Exp_table_long_averaged_z_high_var)
-
-Exp_table_long_averaged_z_high_var %>% 
-  group_by(gene_ID) %>% 
-  count() %>% 
-  nrow()
-```
 
 
-### "Objective" ways to select high variance genes?
+## Gene selection - Omitted
 
-```{r}
-all_var_and_ranks <- Exp_table_long_averaged_z %>% 
-  group_by(gene_ID) %>% 
-  summarise(var = var(avg_exp)) %>% 
-  ungroup() %>% 
-  mutate(rank = rank(var, ties.method = "average")) 
 
-bait_var <- all_var_and_ranks %>% 
-  filter(gene_ID %in% Baits$X2) %>% 
-  group_by(gene_ID) %>% 
-  slice_max(n = 1, order_by = var)
-
-bait_var #var = 0.14 and 0.096. rank ~61,600
-
-all_var_and_ranks %>% 
-  ggplot(aes(x = var, y = rank)) +
-   geom_rect( 
-    xmax = max(high_var_genes5000$var), 
-    xmin = min(high_var_genes5000$var),
-    ymax = nrow(all_var_and_ranks),
-    ymin = nrow(all_var_and_ranks) - 5000,
-    fill = "dodgerblue2"
-    ) +
-  geom_line(linewidth = 1.1) +
-  geom_hline(
-    data = bait_var, aes(yintercept = rank),
-    color = "tomato1", size = 0.8
-  ) +
-  geom_vline(
-    data = bait_var, aes(xintercept = var), 
-    color = "tomato1", size = 0.8
-  ) + 
-  labs(y = "rank",
-       x = "var(avg_exp)",
-       caption = "Blue box = top 5000 high var genes.\nRed lines = bait genes.") +
-  theme_classic() +
-  theme(
-    text = element_text(size = 14),
-    axis.text = element_text(color = "black"),
-    plot.caption = element_text(hjust = 0)
-  )
-
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/gene_var_distribution.svg", height = 3.5, width = 3.5)
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/gene_var_distribution.png", height = 3.5, width = 3.5)
-```
-From this graph, you can see a couple things:
-
-Our bait genes are among the most highly variable genes, and thus highly ranked.
-If we just take the top 5000 genes, it takes pretty much the entire upper elbow of the graph.
-I would argue that we don't need to put too many genes into a gene co-expression analysis, because if our bait genes is among the highest variance genes, genes co-expressed with them (the genes we are trying to find) should also be among the mostly highly variable.
 
 ## Gene-wise correlation
 
@@ -173,7 +84,7 @@ We will use the cor() function in R. But the cor() only take vector or matrix as
 
 ```{r}
 #need wide z-score
-z_score_wide <- Exp_table_long_averaged_z_high_var %>% 
+z_score_wide <- Exp_table_long_averaged_z %>% 
   select(gene_ID, cluster, z.score) %>% 
   pivot_wider(names_from = cluster, values_from = z.score) %>% 
   as.data.frame()
@@ -232,7 +143,7 @@ for (i in 1:num_chunks) {
   cat("Processed chunk", i, "of", num_chunks, "\n")
 }
 
-edge_table<-edge_table %>%
+edge_table <- edge_table %>%
   mutate(t = r*sqrt((number_of_clusters-2)/(1-r^2))) %>%
   mutate(p.value = case_when(
     t > 0 ~ pt(t, df = number_of_clusters-2, lower.tail = F),
@@ -240,7 +151,7 @@ edge_table<-edge_table %>%
   )) %>%
   mutate(FDR = p.adjust(p.value, method = "fdr"))
 
-saveRDS(edge_table, file = "/scratch/ac05869/nih/coexpression/kratom_stem/Results/MIT_AD_AE_edge_table.rds")
+saveRDS(edge_table, file = "/scratch/ac05869/nih/coexpression/kratom_stem/Results/MIT_AD_AE_edge_table_all_genes.rds")
 ```
 
 You can look at various adjusted p value cutoffs and the corresponding r value before proceeding. Let's say we just look at positively correlated genes.
@@ -257,30 +168,6 @@ edge_table %>%
   slice_min(order_by = abs(r), n = 10)
 ```
 
-
-This chunk converts the correlation matrix into a data table. 
-Then it goes from wide to long using `pivot_longer()`.
-After that, everything is normal dyplr verbs, such as `mutate()` and `filter()`. 
-P values are computed using the t distribution. 
-Depending on the sign of t, the upper of lower tail probability is taken. 
-Finally, the p values are adjusted for multiple comparisons using FDR. 
-This step can take a while. Turning a large wide table to a long table always takes a while.
-Your computer may not have enough memory to run this step if you put in many genes. 
-
-You can look at various adjusted p value cutoffs and the corresponding r value before proceeding. 
-Let's say we just look at positively correlated genes 
-
-```{r}
-edge_table %>% 
-  filter(r > 0) %>% 
-  filter(FDR < 0.05) %>% 
-  slice_min(order_by = abs(r), n = 10)
-
-edge_table %>% 
-  filter(r > 0) %>% 
-  filter(FDR < 0.01) %>% 
-  slice_min(order_by = abs(r), n = 10)
-```
 
 If you cut off the FDR at 0.05, then your r values are 0.511 or larger. 
 If you cut off the FDR at 0.01, then your r values are 0.627  or larger. 
@@ -322,8 +209,8 @@ edge_table %>%
     axis.text = element_text(color = "black")
   )
 
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/r_histogram_r0.8.svg", height = 3.5, width = 5, bg = "white")
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/r_histogram_r0.8.png", height = 3.5, width = 5, bg = "white")
+ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/r_histogram.svg", height = 3.5, width = 5, bg = "white")
+ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/r_histogram.png", height = 3.5, width = 5, bg = "white")
 ```
 
 large size experiments (df = 80 or 100), you would reach p < 0.01 with r value between 0.2 and 0.4.
@@ -591,7 +478,7 @@ Again, the essence of this workflow is simple, so we will use a simple method: p
 To do that, we append the module membership data back to the long table containing z scores. 
 
 ```{r}
-Exp_table_long_averaged_z_high_var_modules <- Exp_table_long_averaged_z %>% 
+Exp_table_long_averaged_z_modules <- Exp_table_long_averaged_z %>% 
   inner_join(my_network_modules, by = "gene_ID")
 
 head(Exp_table_long_averaged_z_high_var_modules)
@@ -602,7 +489,7 @@ write_excel_csv(Exp_table_long_averaged_z_high_var_modules,
 
 Now we can produce summary statistics for each cluster and look at their expression pattern using mean. 
 ```{r}
-modules_mean_z <- Exp_table_long_averaged_z_high_var_modules %>% 
+modules_mean_z <- Exp_table_long_averaged_z_modules %>% 
   group_by(module, cluster) %>% 
   summarise(mean.z = mean(z.score)) %>% 
   ungroup()
@@ -621,19 +508,13 @@ module_peak_exp
 Again, `group_by()` is doing a lot of heavy lifting here. 
 
 ### More module QC
-You can also QC the clusters via a line graph 
-It will be too much to look at if graph all the modules, so let's just pick 2. 
-
-I picked: 
-
+You can also QC the clusters via a line graph
+> Notes
 * module 21, 15, 35: Clusters 9, 11, 20. Where the dotplot showed cell specificity for MIA genes
 * module 15, where our bait genes are. 
 
 ```{r}
-module_line_plot <- Exp_table_long_averaged_z_high_var_modules %>% 
-  filter(module == "21" |
-           module == "15" ) %>% 
-  ggplot(aes(x = cluster, y = z.score)) +
+ggplot(Exp_table_long_averaged_z_modules, aes(x=cluster, y=z.score)) +
   geom_line(aes(group = gene_ID), color = "grey70") +
   geom_line(
     data = modules_mean_z,
@@ -643,76 +524,17 @@ module_line_plot <- Exp_table_long_averaged_z_high_var_modules %>%
   labs(x = NULL,
        y = "z score") +
   theme_classic() +
+  facet_wrap( ~ module, ncol = 5) +
   theme(
-    text = element_text(size = 14),
+    text = element_text(size = 2.5),
     axis.text = element_text(color = "black"),
-    axis.text.x = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
     panel.spacing = unit(1, "line")
   )
-
-module_line_plot
-
-module_lines_color_strip <- expand.grid(
-  tissue = unique(Metadata$tissue),
-  dev_stage = unique(Metadata$dev_stage), 
-  stringsAsFactors = F
-) %>% 
-  filter(dev_stage != "Anthesis") %>% 
-  filter(str_detect(tissue, "epider|chyma|Vasc") == F) %>% 
-  mutate(order_x = case_when(
-        str_detect(dev_stage, "5") ~ 1,
-        str_detect(dev_stage, "10") ~ 2,
-        str_detect(dev_stage, "20") ~ 3,
-        str_detect(dev_stage, "30") ~ 4,
-        str_detect(dev_stage, "MG") ~ 5,
-        str_detect(dev_stage, "Br") ~ 6,
-        str_detect(dev_stage, "Pk") ~ 7,
-        str_detect(dev_stage, "LR") ~ 8,
-        str_detect(dev_stage, "RR") ~ 9
-  )) %>% 
-  mutate(stage = case_when(
-    str_detect(dev_stage, "MG|Br|Pk") ~ str_sub(dev_stage, start = 1, end = 2),
-    T ~ dev_stage
-  )) %>% 
-  mutate(stage = factor(stage, levels = c(
-   "5 DPA",
-   "10 DPA",
-   "20 DPA",
-   "30 DPA",
-   "MG",
-   "Br",
-   "Pk",
-   "LR",
-   "RR"
-  ))) %>% 
-  mutate(dev_stage = reorder(dev_stage, order_x)) %>% 
-  ggplot(aes(x = dev_stage, y = 1)) +
-  facet_grid(. ~ tissue) +
-  geom_tile(aes(fill = stage)) +
-  scale_fill_manual(values = viridis(9, option = "D")) +
-  theme_void() +
-  theme(
-    legend.position = "bottom",
-    strip.text = element_blank(),
-    text = element_text(size = 14),
-    panel.spacing = unit(1, "lines")
-  )
-
-wrap_plots(module_line_plot, module_lines_color_strip,
-           nrow = 2, heights = c(1, 0.08))
-
-module_line_plot
 
 ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/module_line_plots.svg", height = 4, width = 8.2, bg = "white")
 ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/module_line_plots.png", height = 4, width = 8.2, bg = "white")
 ```
-This code chunk is very long, because a few things:
-
-1. I reordered x-axis to reflect the biological time sequence
-2. Overlaid the average of clusters
-3. Added a color strip at the bottom to annotate stages, which reduces the amount of text on the figure. 
-
-There is obviously a lot of noise, but the pattern is apparent. 
 
 ### Heat map representation of clusters 
 A good way to present these modules is to make a heat map. 
@@ -744,38 +566,13 @@ modules_mean_z <- modules_mean_z %>%
 This sets z scores > 1.5 or < -1.5 to 1.5 or -1.5, respectively. The rest remain unchanged.  
 
 #### Reorder rows and columns 
-Let's say we graph modules on y axis, and stage/tissue on x-axis.
+Let's say we graph modules on y axis, and stage/tissue (cluster) on x-axis.
 Reordering columns are easy, we just do it by hand. 
 We already did it before. We can copy and paste that down here. 
 ```{r}
 modules_mean_z <- modules_mean_z %>% 
-  mutate(order_x = case_when(
-        str_detect(dev_stage, "5") ~ 1,
-        str_detect(dev_stage, "10") ~ 2,
-        str_detect(dev_stage, "20") ~ 3,
-        str_detect(dev_stage, "30") ~ 4,
-        str_detect(dev_stage, "MG") ~ 5,
-        str_detect(dev_stage, "Br") ~ 6,
-        str_detect(dev_stage, "Pk") ~ 7,
-        str_detect(dev_stage, "LR") ~ 8,
-        str_detect(dev_stage, "RR") ~ 9
-  )) %>%  
-  mutate(stage = case_when(
-    str_detect(dev_stage, "MG|Br|Pk") ~ str_sub(dev_stage, start = 1, end = 2),
-    T ~ dev_stage
-  )) %>% 
-  mutate(stage = factor(stage, levels = c(
-   "5 DPA",
-   "10 DPA",
-   "20 DPA",
-   "30 DPA",
-   "MG",
-   "Br",
-   "Pk",
-   "LR",
-   "RR"
-  ))) %>% 
-  mutate(dev_stage = reorder(dev_stage, order_x)) 
+  mutate(order_x = as.factor(cluster)) %>%  
+  mutate(cluster = reorder(cluster, order_x)) 
 
 head(modules_mean_z)
 ```
@@ -785,22 +582,12 @@ What I usually do is I reorder the rows based on their peak expression.
 We use the `module_peak_exp` table that we already made.
 
 ```{r}
-module_peak_exp <- module_peak_exp %>% 
-  mutate(order_y = case_when(
-        str_detect(dev_stage, "5") ~ 1,
-        str_detect(dev_stage, "10") ~ 2,
-        str_detect(dev_stage, "20") ~ 3,
-        str_detect(dev_stage, "30") ~ 4,
-        str_detect(dev_stage, "MG") ~ 5,
-        str_detect(dev_stage, "Br") ~ 6,
-        str_detect(dev_stage, "Pk") ~ 7,
-        str_detect(dev_stage, "LR") ~ 8,
-        str_detect(dev_stage, "RR") ~ 9
-  )) %>%  
-  mutate(peak_exp = reorder(dev_stage, order_y)) 
+module_peak_exp2 <- module_peak_exp %>% 
+  mutate(order_y = as.factor(cluster)) %>%  
+  mutate(peak_exp = reorder(cluster, order_y)) 
 
 modules_mean_z_reorded <- modules_mean_z %>% 
-  full_join(module_peak_exp %>% 
+  full_join(module_peak_exp2 %>% 
               select(module, peak_exp, order_y), by = c("module")) %>% 
   mutate(module = reorder(module, -order_y))
 
@@ -1168,4 +955,5 @@ write_excel_csv(my_network_modules, "../Results/my_network_modules.csv")
 Well, we are pretty much done. 
 Now you just need to send the list of candidate genes and the nice graphics to your wet lab folks. 
 Hopefully they find something interesting at the lab bench. 
+
 
