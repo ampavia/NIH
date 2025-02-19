@@ -15,7 +15,7 @@
 #Project: Star alignment R2 and R1
 #       Script function: map reads
 #       Input: genome index and barcoded fastq reads 2 and 1
-#       Output: BAM
+#       Output: BAM and bam.bai
 ################################################################################
 #INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt
 LIB=`head -n ${SLURM_ARRAY_TASK_ID} ${INFILE} | cut -f 1 | tail -n 1`
