@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=STAR_alignment		# Job name 
 #SBATCH --partition=batch		# Partition name (batch, highmem_p, or gpu_p)
-#SBATCH --ntasks=2		# Run job in single task, by default using 1 CPU core on a single node
+#SBATCH --ntasks=12		# aka threads. Each task by default using 1 CPU core on a single node
 #SBATCH --cpus-per-task=24	 	# CPU core count per task, by default 1 CPU core per task
 #SBTACH --array=1-2				# Array element range from 0 to 1, i.e. 2 element jobs
-#SBATCH --mem=250GB			# Memory per node (30GB); by default using M as unit
+#SBATCH --mem=256GB			# Memory per node (30GB); by default using M as unit
 #SBATCH --time=48:00:00              	# Time limit hrs:min:sec or days-hours:minutes:seconds
 #SBATCH --output=/scratch/ac05869/KRT_AA_AB_sc/err_out/%x_%j.out		# Standard output log
 #SBATCH --error=/scratch/ac05869/KRT_AA_AB_sc/err_out/%x_%j.err		# Standard error log
@@ -54,7 +54,7 @@ STAR --runThreadN 24 \
 #index bam file
 ml purge
 ml SAMtools/1.14-GCC-11.2.0
-samtools index -@ 24 ${LIB}_Aligned.sortedByCoord.out.bam
+samtools index -@ 6 ${LIB}_Aligned.sortedByCoord.out.bam
 
 #Parameters 
 #sbatch --array 1-2 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt ~/NIH/Single_cell/STAR_alignment.sh
