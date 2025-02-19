@@ -77,12 +77,32 @@ allwin_subset <- allwin %>%
 #rev_allwin_subset <- allwin_subset[order(nrow(allwin_subset):1),]
 (rev_allwin_subset <- allwin_subset %>% arrange(desc(order))) #another way to do it if your data has "order" column
 ```
+## Make dot plot
+```{r}
+#plot only genes with expression
+(dotplot_data <- DotPlot(stem.combined, features = unique(rev_allwin_subset$kratom.id))$data)
+(unique(rev_allwin_subset$kratom.id)) #Count if any duplicate gene ID's
+
+dotplot_data %>% 
+  inner_join(rev_allwin_subset %>% 
+               distinct(kratom.id, .keep_all = T), by = c("features.plot"="kratom.id")) %>%
+  mutate(tag = paste(gene.abbreviation, features.plot)) %>%
+  ggplot(aes(x = id, y = reorder(tag,order, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster") + 
+  theme_classic()
+
+ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_new_allwin_pathway_top_several_hits.png", height = 10, width = 12, bg = "white")
+```
+
 
 ## Look at top hit
 ```{r}
 #Need to create a file that has your marker genes and some metadata (cell types, etc.). Change all underscores to either dashes or periods
 
-allwin <- read.table("/home/ac05869/nih/allwin_top_pathway_gene.txt", header = TRUE, sep = "\t")
+allwin <- read.table("/home/ac05869/nih/allwin_top_pathway_gene_stem.txt", header = TRUE, sep = "\t")
 allwin$kratom.id <- gsub("\\.\\d+$", "", allwin$kratom.id) #remove transcript syntax to match seurat object
 allwin$kratom.id <- gsub("_", "-", allwin$kratom.id)
 allwin <- allwin %>%
