@@ -21,6 +21,7 @@
 #		Output 4: barcoded_fastqs/
 ################################################################################
 #INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt #list lib ID's
+LIB=`head -n ${SLURM_ARRAY_TASK_ID} ${INFILE} | cut -f 1 | tail -n 1`
 
 OUTDIR="/scratch/ac05869/KRT_AA_AB_sc/wd"
 #if output directory doesn't exist, create it
@@ -31,10 +32,6 @@ fi
 
 #set working directory
 cd ${OUTDIR}
-
-#INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt #list lib ID's
-
-LIB=`head -n ${SLURM_ARRAY_TASK_ID} ${INFILE} | cut -f 1 | tail -n 1`
 
 mkdir ../${LIB}
 
