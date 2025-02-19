@@ -21,6 +21,7 @@ library(RColorBrewer)
 library(rcartocolor)
 library(viridis)
 library(patchwork)
+library(showtext)
 ```
 
 # Pull Seurat data
@@ -56,7 +57,7 @@ Marker_dotplot <- DotPlot(stem.combined,
                           features = unique(stem_markers2$gene_ID))
 
 cells <- c(
-    "M", "E", "GC", "V", "X", "Ph", "Cam", "Com", "IP", "Idi", "Pro", "G0/G1", "G2", "SAM", "TRI", "Ray"
+    "M", "E", "GC", "V", "Cor/Pith", "X", "Ph", "Cam", "Com", "Gph", "IP", "Idi", "Pro", "G0/G1", "G2", "SAM", "TRI", "Ray"
   )
 
 Marker_dotplot_nice_df <- Marker_dotplot$data %>% 
@@ -73,15 +74,16 @@ Marker_dotplot_nice_df <- Marker_dotplot$data %>%
       str_detect(cell_type, "sieve") ~ "Ph",
     str_detect(cell_type, "com") ~ "Com",
     str_detect(cell_type, "vas") ~ "V",
-    str_detect(cell_type, "cortex") ~ "C/Pi",
+    str_detect(cell_type, "cortex") ~ "Cor/Pith",
     str_detect(cell_type, "epi") ~ "E",
     str_detect(cell_type, "guard") ~ "GC",
     str_detect(cell_type, "iridoid") |
       str_detect(cell_type, "IPAP") ~ "IP",
     str_detect(cell_type, "idioblast")  ~ "Idi",
-    str_detect(cell_type, "G2")  ~ "G2",
-    str_detect(cell_type, "G0/G1")  ~ "G0/G1",
+    str_detect(cell_type, "G2") |
+      str_detect(cell_type, "G0/G1")  ~ "Gph",
     str_detect(cell_type, "pro") |
+      str_detect(cell_type, "s_p") |
     str_detect(cell_type, "Unkn") ~ "Pro",
     str_detect(cell_type, "shoot") ~ "SAM",
     str_detect(cell_type, "trich") ~ "TRI",
@@ -122,7 +124,7 @@ Marker_dot <- Marker_dotplot_nice_df %>%
         legend.box = "horizontal",
         legend.key.height = unit(0.7, "lines"))
 
-Marker_dot
+(E <- Marker_dot)
 ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_epidermal_markers.png", width = 10, height = 8)
 ```
 
@@ -148,9 +150,34 @@ Marker_dot <- Marker_dotplot_nice_df %>%
         legend.box = "horizontal",
         legend.key.height = unit(0.7, "lines"))
 
-Marker_dot
+(V <- Marker_dot)
 ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_VasculatureMixed_markers.png", width = 10, height = 8)
 ```
+```{r}
+list(cells)
+cell <- "Cor/Pith" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "Cortex/Pith") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+(Cor <- Marker_dot)
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_CortexPith_markers.png", width = 10, height = 8)
+```
+
 
 ```{r}
 list(cells)
@@ -173,7 +200,7 @@ Marker_dot <- Marker_dotplot_nice_df %>%
         legend.box = "horizontal",
         legend.key.height = unit(0.7, "lines"))
 
-Marker_dot
+(X <- Marker_dot)
 ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_xylem_markers.png", width = 10, height = 8)
 ```
 
@@ -198,7 +225,7 @@ Marker_dot <- Marker_dotplot_nice_df %>%
         legend.box = "horizontal",
         legend.key.height = unit(0.7, "lines"))
 
-Marker_dot
+(Ph <- Marker_dot)
 ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_Phloem_markers.png", width = 10, height = 8)
 ```
 
@@ -223,7 +250,7 @@ Marker_dot <- Marker_dotplot_nice_df %>%
         legend.box = "horizontal",
         legend.key.height = unit(0.7, "lines"))
 
-Marker_dot
+(Cam <- Marker_dot)
 ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_Cambium_markers.png", width = 10, height = 8)
 ```
 
@@ -248,7 +275,7 @@ Marker_dot <- Marker_dotplot_nice_df %>%
         legend.box = "horizontal",
         legend.key.height = unit(0.7, "lines"))
 
-Marker_dot
+(Com <- Marker_dot)
 ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_CompanionCells_markers.png", width = 10, height = 8)
 ```
 
@@ -273,7 +300,7 @@ Marker_dot <- Marker_dotplot_nice_df %>%
         legend.box = "horizontal",
         legend.key.height = unit(0.7, "lines"))
 
-Marker_dot
+(IP <- Marker_dot)
 ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_IPAP_markers.png", width = 10, height = 8)
 ```
 
@@ -299,10 +326,33 @@ Marker_dot <- Marker_dotplot_nice_df %>%
         legend.box = "horizontal",
         legend.key.height = unit(0.7, "lines"))
 
-Marker_dot
+(Pro <- Marker_dot)
 ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_Proliferating_markers.png", width = 10, height = 8)
 ```
+```{r}
+list(cells)
+cell <- "Gph" #filter by cell_type2 to see what markers are cluster specific
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  filter(str_detect(cell_type2, cell) == T) %>% #filter to see what markers are cluster specific
+  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.",
+       title = "G phase") +
+  theme_classic() +
+  theme(text = element_text(size = 10, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
 
+(Gph <- Marker_dot)
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_G_phase_markers.png", width = 10, height = 8)
+```
 
 ```{r}
 list(cells)
@@ -325,7 +375,7 @@ Marker_dot <- Marker_dotplot_nice_df %>%
         legend.box = "horizontal",
         legend.key.height = unit(0.7, "lines"))
 
-Marker_dot
+(SAM <- Marker_dot)
 ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_SAM_markers.png", width = 10, height = 8)
 ```
 
@@ -351,84 +401,17 @@ Marker_dot <- Marker_dotplot_nice_df %>%
         legend.box = "horizontal",
         legend.key.height = unit(0.7, "lines"))
 
-Marker_dot
+(Ray <- Marker_dot)
 ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_RayParenchyma_markers.png", width = 10, height = 8)
 ```
 
-
-
-
-
-
-
-
-
-######### Depends on tissue type
-## Cell type assignment heatmap
-This part needs to be edited depending on the cluster numbers, gene expression, etc.
 ```{r}
-DefaultAssay(stem.combined) <- "RNA"
-
-stem_markers2 <- stem_markers %>% 
-  dplyr::select(symbol, cell_type, gene_ID) %>%
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.06-2G000320") == F) %>% #under-expressed xylem marker
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.01-2G008870") == F) %>% # under-expressed G0/G1 markers
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.08-1G000720") == F) %>% # guard cell marker that was coexpressed with phloem/vasculature (APL)
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.20-2G008400") == F) %>% # under expressed xylem marker
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.19-1G001940") == F) %>% # under-expressed xylem marker
-  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.16-2G012920") == F) %>% # under-expressed phloem marker
-  dplyr::filter(is.na(gene_ID) == F)
-  
-Marker_dotplot <- DotPlot(stem.combined, 
-                          features = unique(stem_markers2$gene_ID)) 
-head(Marker_dotplot$data)
-
-Marker_dotplot_nice_df <- Marker_dotplot$data %>% 
-  mutate(gene_ID = row.names(.)) %>% 
-  mutate(gene_ID = str_sub(gene_ID, end = 15)) %>% 
-  full_join(stem_markers2 %>% 
-              distinct(gene_ID, .keep_all = T),
-             by = c("features.plot" = "gene_ID")) %>% 
-   mutate(cell_type2 = case_when(
-    str_detect(cell_type, "meso") ~ "M",
-    str_detect(cell_type, "cam|x|phl|com|vas|trach") ~ "V",
-    str_detect(cell_type, "epi") ~ "E",
-    str_detect(cell_type, "guard") ~ "GC",
-    str_detect(cell_type, "IPAP") ~ "IP",
-    str_detect(cell_type, "idioblast")  ~ "I",
-    str_detect(cell_type, "G0|G1|G2|prolif")  ~ "Pro",
-    str_detect(cell_type, "shoot") ~ "SAM",
-    str_detect(cell_type, "trich") ~ "TRI"
-  )) %>% 
-  dplyr::filter(str_detect(cell_type, "shea") == F) %>% 
-  mutate(cell_type2 = factor(cell_type2, levels = c(
-    "M", "E", "GC", "V", "IP", "I", "Pro", "SAM", "TRI"
-  ))) %>% 
-  mutate(cell_type3 = as.numeric(cell_type2)) %>% 
-  mutate(features.plot = reorder(features.plot, cell_type3, decreasing = T)) %>% 
-  dplyr::filter(is.na(avg.exp.scaled) == F)%>%
-  mutate(tag = paste(features.plot, cell_type2)) %>%
-  mutate(id = factor(id, levels = c("1", "2", "4", "5", "7", "9", "19", "23",
-                                    "20",
-                                    "6", "22", "10", "15", "17", "0", "3", "8",
-                                    "12", "14", "13", "18", 
-                                    "11", "16", "21"
-                                    )))
-
-dim(Marker_dotplot_nice_df) #552
-head(Marker_dotplot_nice_df)
-```
-
-* Mesophyll: "1", "2", "4", "5", "7", "9", "19", "23",
-* Epi: "20",
-* Guard: 
-* Vasculature: "0", "3", "6", "22", "8", "10", "15", "17",
-* SAM: "12", "14", "13", "18", 
-* Un: "11", "16", "21" 
-
-```{r}
-Marker_dot <- Marker_dotplot_nice_df %>% 
-  ggplot(aes(x = id, y = reorder(tag, cell_type3, decreasing = TRUE))) +
+showtext_auto()
+Marker_dot_wrapped <- Marker_dotplot_nice_df %>% 
+  filter(cell_type2 != "M") %>% #mesophyll doesn't belong in stem
+  mutate(chrom = str_sub(gene_ID, start = 1, end = 14)) %>% 
+  mutate(tag2 = paste(chrom, Primary_Gene_Symbol)) %>%
+  ggplot(aes(x = id, y = reorder(tag2, cell_type3, decreasing = TRUE))) +
   geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
   scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
   guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
@@ -437,126 +420,23 @@ Marker_dot <- Marker_dotplot_nice_df %>%
        fill = "Avg. Exp.",
        size = "% Exp.") +
   theme_classic() +
-  theme(text = element_text(size = 14, color = "black"),
+  theme(text = element_text(size = 30, color = "black"),
         axis.text = element_text(color = "black"),
         legend.position = "top",
         legend.box = "horizontal",
-        legend.key.height = unit(0.7, "lines"))
-
-Marker_dot
-ggsave("/scratch/ac05869/nih/kratom/MIT_AD_AE_clusters_with_Dionne_markers_05feb25.png", width = 10, height = 8)
-```
-
-#Merge seurat cluster top marker file with stem_markers to identify top markers for each cluster
-```{r}
-cluster_markers <- read_delim("/scratch/ac05869/nih/kratom_pathway/MIT_AD_AE_clean_integrated_all_markers_minpct0.25_minlfc0.25_with_info_30jan25.txt", delim = "\t", col_names = T) %>% rename("gene_ID" = "ID")
-cluster_markers$gene_ID <- gsub(pattern = "_", replacement = "-", cluster_markers$gene_ID)
-head(cluster_markers)
-head(stem_markers)
-
-cluster_markers2 <- inner_join(cluster_markers, stem_markers, by = "gene_ID") %>% 
-  group_by(cluster) %>%
-  select(1, 11, 2, 13, 12, 8, 9, 10, 14, 17, 21)
-head(cluster_markers2)
-
-#remove commas from Reference column in order to write csv file
-cluster_markers2 <- cluster_markers2 %>%
-  mutate(Reference = str_replace(Reference, ",", " ")) %>%
-           write_csv(file = "~/nih/marker_genes/merged_Dionne_markers_MIT_AD_AE_all_markers_minpct0.25_minlfc0.25_05feb25.csv", quote = "none")
-head(cluster_markers2)
-```
-
-* Mesophyll: "1", "2", "4", "5", "7", "9", "19", "23",
-* Epi: "20",
-* Guard: 
-* Vasculature: "0", "3", "6", "22", "8", "10", "15", "17",
-* SAM: "12", "14", "13", "18", 
-* Un: "11", "16", "21" 
-
-```{r}
-stem_cell_type_assignment <- data.frame(
-  cluster = c(0:23)
-) %>% 
-  mutate(cell_type = case_when(
-    cluster == 1 |
-      cluster == 2 |
-      cluster == 4 |
-      cluster == 5 |
-      cluster == 7 |
-      cluster == 9 | 
-      cluster == 19 |
-      cluster == 23 ~ "Mesophyll",
-    cluster == 20 ~ "Epidermis",
-    cluster == 0 |
-      cluster == 3 |
-      cluster == 6 |
-      cluster == 22 |
-      cluster == 8 |
-      cluster == 10 |
-      cluster == 15 |
-      cluster == 17  ~ "Vasculature",
-    cluster == 12 |
-      cluster == 14 |
-      cluster == 13 |
-      cluster == 18 ~ "SAM",
-    cluster == 11 |
-      cluster == 16 |
-      cluster ==21 ~ "Unassigned"
-  )) %>% 
-  mutate(cell_type = factor(cell_type, 
-                            levels = c(
-                              "Mesophyll", "Epidermis",
-                              "Vasculature", 
-                              "SAM",
-                              "Unassigned"
-                            ))) %>% 
-  mutate(cluster = factor(cluster, levels = c(
-     "1", "2", "4", "5", "7", "9", "19", "23",
-     "20",
-     "0", "3", "6", "22", "8", "10", "15", "17",
-     "12", "14", "13", "18",
-     "11", "16", "21" 
-    )))
-```
-
-
-```{r}
-stem_cell_type_strip <- stem_cell_type_assignment %>% 
-  ggplot(aes(x = cluster, y = "" )) +
-  geom_tile(aes(fill = cell_type)) +
-  scale_fill_manual(values = c(brewer.pal(6, "Accent"), "grey80")) +
-  guides(fill = guide_legend(nrow = 3)) +
-  labs(fill = "Cell type") +
-  theme_void() +
+        legend.key.height = unit(0.7, "lines")) +
+  facet_wrap( ~ cell_type2, ncol = 4, shrink = T, scales = "free") +
   theme(
-    legend.position = "bottom" ,
-    text = element_text(size = 14)
+    text = element_text(size = 30),
+    axis.text = element_text(color = "black"),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+    panel.spacing = unit(1, "line")
   )
 
-stem_cell_type_strip
+Marker_dot_wrapped
 
-stem_cell_type_mkr_text <- Marker_dotplot_nice_df %>% 
-  dplyr::filter(id == 0) %>% 
-  ggplot(aes(x = "", y = reorder(tag, cell_type3, decreasing = TRUE))) +
-  geom_text(aes(label = unique(symbol), fontface = "italic")) +
-  theme_void()
-
-blank <- data.frame(
-  x = 0,
-  y = 0
-) %>% 
-  ggplot(aes(x, y)) +
-  theme_void()
-
-Marker_dot_strip <- wrap_plots(Marker_dot, stem_cell_type_mkr_text,
-          stem_cell_type_strip, blank,
-          heights = c(1, 0.03), 
-          widths = c(1, 0.2), nrow = 2, ncol = 2)
-
-Marker_dot_strip
-
-ggsave("/scratch/ac05869/nih/kratom/MIT_AD_AE_cell_type_assignment_plot.svg", height = 8, width = 7.5, bg = "white")
-ggsave("/scratch/ac05869/nih/kratom/MIT_AD_AE_cell_type_assignment_plot.png", height = 6, width = 7.5, bg = "white")
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_wrapped_dot.png", width = 18, height = 8)
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_stem/MIT_AD_AE_wrapped_dot.svg", width = 18, height = 8)
 ```
 
 
