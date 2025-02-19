@@ -3,7 +3,7 @@
 #SBATCH --partition=batch		# Partition name (batch, highmem_p, or gpu_p)
 #SBATCH --ntasks=12			# Run job in single task, by default using 1 CPU core on a single node
 #SBATCH --cpus-per-task=1	 	# CPU core count per task, by default 1 CPU core per task
-#SBTACH --array=1-4				# Array element range from 0 to 1, i.e. 2 element jobs
+#SBTACH --array=1-2			# Array element range from 0 to 1, i.e. 2 element jobs
 #SBATCH --mem=20G			# Memory per node (30GB); by default using M as unit
 #SBATCH --time=12:00:00              	# Time limit hrs:min:sec or days-hours:minutes:seconds
 #SBATCH --output=/scratch/ac05869/KRT_AA_AB_sc/err_out/%x_%j.out		# Standard output log
