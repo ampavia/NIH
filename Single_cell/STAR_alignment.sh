@@ -30,8 +30,8 @@ fi
 cd ${OUTDIR}
 
 #merge pipseeker barcoded reads for input
-cat ../barcoded_fastqs/barcoded_*_R1.fastq.gz > ${LIB}_all_barcoded_R1.fastq.gz
-cat ../barcoded_fastqs/barcoded_*_R2.fastq.gz > ${LIB}_all_barcoded_R2.fastq.gz
+cat ../barcoded_fastqs/barcoded_*_R1.fastq.gz > ../barcoded_fastqs/${LIB}_all_barcoded_R1.fastq.gz
+cat ../barcoded_fastqs/barcoded_*_R2.fastq.gz > ../barcoded_fastqs/${LIB}_all_barcoded_R2.fastq.gz
 
 ml STAR/2.7.10b-GCC-11.3.0
 
@@ -54,7 +54,6 @@ STAR --runThreadN 24 \
 #index bam file
 ml purge
 ml SAMtools/1.14-GCC-11.2.0
-cd ${OUTDIR}
 samtools index -@ 24 ${LIB}_Aligned.sortedByCoord.out.bam
 
 #Parameters 
