@@ -34,5 +34,7 @@ mv UniqueAndMult-EM.mtx matrix.mtx #rename so that it is recognized by STARsolo
 ml STAR/2.7.10b-GCC-11.3.0
 STAR --runMode soloCellFiltering ${OUTDIR} ${OUTDIR}/EM_EmptyDrops_Combined/ --soloCellFilter EmptyDrops_CR
 
+gzip ${OUTDIR}/EM_EmptyDrops_Combined/*
+
 #Parameters 
 #sbatch --array 1-2 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt ~/NIH/Single_cell/STAR_CellFiltering.sh
