@@ -41,8 +41,8 @@ mkdir ../${LIB}
 /home/ac05869/software/pipseeker-v3.3.0-linux/pipseeker barcode --threads 20 --verbosity 1 --fastq ../rawdata/${LIB} \
 --chemistry V --output-path ../${LIB}
 
-cat ../${LIB}/barcoded_*_R1.fastq.gz > ${LIB}_all_barcoded_R1.fastq.gz
-cat ../${LIB}/barcoded_*_R2.fastq.gz > ${LIB}_all_barcoded_R2.fastq.gz
+cat ../${LIB}/barcoded_fastqs/barcoded_*_R1.fastq.gz > ${LIB}_all_barcoded_R1.fastq.gz
+cat ../${LIB}/barcoded_fastqs/barcoded_*_R2.fastq.gz > ${LIB}_all_barcoded_R2.fastq.gz
 
 #Parameters 
 #sbatch --array 1-2 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt /home/ac05869/NIH/Single_cell/pipseeker.sh
