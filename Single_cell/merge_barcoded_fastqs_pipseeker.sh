@@ -6,8 +6,8 @@
 #SBTACH --array=1-2				# Array element range from 0 to 1, i.e. 2 element jobs
 #SBATCH --mem=50G			# Memory per node (30GB); by default using M as unit
 #SBATCH --time=12:00:00              	# Time limit hrs:min:sec or days-hours:minutes:seconds
-#SBATCH --output=%x_%j.out		# Standard output log, e.g., testBowtie2_12345.out
-#SBATCH --error=%x_%j.err		# Standard error log, e.g., testBowtie2_12345.err
+#SBATCH --output=/scratch/ac05869/KRT_AA_AB_sc/%x_%j.out		# Standard output log, e.g., testBowtie2_12345.out
+#SBATCH --error=/scratch/ac05869/KRT_AA_AB_sc/%x_%j.err		# Standard error log, e.g., testBowtie2_12345.err
 #SBATCH --mail-user=ac05869@uga.edu    # Where to send mail
 #SBATCH --mail-type=END,FAIL          	# Mail events (BEGIN, END, FAIL, ALL)
 
