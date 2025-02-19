@@ -6,33 +6,36 @@
 #SBTACH --array=1-2				# Array element range from 0 to 1, i.e. 2 element jobs
 #SBATCH --mem=175G			# Memory per node (30GB); by default using M as unit
 #SBATCH --time=48:00:00              	# Time limit hrs:min:sec or days-hours:minutes:seconds
-#SBATCH --output=%x_%j.out		# Standard output log, e.g., testBowtie2_12345.out
-#SBATCH --error=%x_%j.err		# Standard error log, e.g., testBowtie2_12345.err
+#SBATCH --output=/scratch/ac05869/KRT_AA_AB_sc/err_out/%x_%j.out		# Standard output log
+#SBATCH --error=/scratch/ac05869/KRT_AA_AB_sc/err_out/%x_%j.err		# Standard error log
 #SBATCH --mail-user=ac05869@uga.edu    # Where to send mail
 #SBATCH --mail-type=END,FAIL          	# Mail events (BEGIN, END, FAIL, ALL)
 
 ################################################################################
-#Project: Kratom star alignment MIT_AD and MIT_AE R1 and R2
+#Project: Star alignment R2 and R1
 #       Script function: map reads
 #       Input: genome index and barcoded fastq reads 2 and 1
 #       Output: BAM
 ################################################################################
-
-#INFILE=/scratch/ac05869/nih/kratom/rawdata/Kratom_test.txt
-
+#INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt
 LIB=`head -n ${SLURM_ARRAY_TASK_ID} ${INFILE} | cut -f 1 | tail -n 1`
 
-cd /scratch/ac05869/nih/kratom/star_results
-mkdir ${LIB}
-cd ${LIB}
-ml purge
+OUTDIR="/scratch/ac05869/KRT_AA_AB_sc/${LIB}/STARsolo"
+if [ ! -d ${OUTDIR} ]
+then
+    mkdir -p ${OUTDIR}
+fi
+
+#set working directory
+cd ${OUTDIR}
+
 ml STAR/2.7.10b-GCC-11.3.0
 
 STAR --runThreadN 24 \
 --genomeDir /scratch/ac05869/nih/kratom/star_index \
 --readFilesCommand zcat \
---readFilesIn /scratch/ac05869/nih/kratom/test_pipseeker/${LIB}/barcoded_fastqs/${LIB}_all_barcoded_R2.fastq.gz \
-/scratch/ac05869/nih/kratom/test_pipseeker/${LIB}/barcoded_fastqs/${LIB}_all_barcoded_R1.fastq.gz \
+--readFilesIn ../barcoded_fastqs/${LIB}_all_barcoded_R2.fastq.gz \
+../barcoded_fastqs/${LIB}_all_barcoded_R1.fastq.gz \
 --outFileNamePrefix ${LIB}_ \
 --soloBarcodeReadLength 0 \
 --soloUMIlen 12 \
@@ -41,12 +44,9 @@ STAR --runThreadN 24 \
 --soloMultiMappers EM \
 --soloFeatures GeneFull \
 --soloType CB_UMI_Simple \
---soloCBwhitelist /scratch/ac05869/nih/kratom/test_pipseeker/${LIB}/barcodes/barcode_whitelist.txt \
+--soloCBwhitelist ../barcodes/barcode_whitelist.txt \
 --outSAMtype BAM SortedByCoordinate
-
-
-
 
 #Parameters 
 
-#sbatch --array 1-2 --export=INFILE=/scratch/ac05869/nih/kratom/rawdata/Kratom_test.txt /home/ac05869/nih/kratom/kratom_star_alignment.sh
+#sbatch --array 1-2 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt /home/ac05869/nih/kratom/kratom_star_alignment.sh
