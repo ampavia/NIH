@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=STAR_script_test		# Job name 
+#SBATCH --job-name=STAR_alignment		# Job name 
 #SBATCH --partition=batch		# Partition name (batch, highmem_p, or gpu_p)
-#SBATCH --ntasks=2		# aka threads. Each task by default using 1 CPU core on a single node
+#SBATCH --ntasks=1		# aka threads. Each task by default using 1 CPU core on a single node
 #SBATCH --cpus-per-task=24	 	# CPU core count per task, by default 1 CPU core per task
 #SBTACH --array=1-2				# Array element range from 0 to 1, i.e. 2 element jobs
 #SBATCH --mem=100GB			# Memory per node (30GB); by default using M as unit
@@ -20,7 +20,7 @@
 #INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt
 LIB=`head -n ${SLURM_ARRAY_TASK_ID} ${INFILE} | cut -f 1 | tail -n 1`
 
-OUTDIR="/scratch/ac05869/KRT_AA_AB_sc/${LIB}/STARsolo_array_test"
+OUTDIR="/scratch/ac05869/KRT_AA_AB_sc/${LIB}/STARsolo"
 if [ ! -d ${OUTDIR} ]
 then
     mkdir -p ${OUTDIR}
@@ -31,13 +31,14 @@ cd ${OUTDIR}
 
 ml STAR/2.7.10b-GCC-11.3.0
 
-STAR --runThreadN 2 \
+STAR --runThreadN 24 \
 --genomeDir /scratch/ac05869/nih/kratom/star_index \
 --readFilesIn ../barcoded_fastqs/${LIB}_all_barcoded_R2.fastq.gz \
 ../barcoded_fastqs/${LIB}_all_barcoded_R1.fastq.gz \
 --readFilesCommand zcat \
 --outFileNamePrefix ${LIB}_ \
 --outSAMtype BAM SortedByCoordinate \
+--limitBAMsortRAM 17296580376 \
 --alignIntronMax 5000 \
 --soloType CB_UMI_Simple \
 --soloUMIlen 12 \

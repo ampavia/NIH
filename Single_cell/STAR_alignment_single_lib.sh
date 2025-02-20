@@ -5,8 +5,8 @@
 #SBATCH --cpus-per-task=24	 	# CPU core count per task, by default 1 CPU core per task
 #SBATCH --mem=100GB			# Memory per node (30GB); by default using M as unit
 #SBATCH --time=48:00:00              	# Time limit hrs:min:sec or days-hours:minutes:seconds
-#SBATCH --output=/scratch/ac05869/KRT_AA_sc/err_out/%x_%j.out		# Standard output log
-#SBATCH --error=/scratch/ac05869/KRT_AA_sc/err_out/%x_%j.err		# Standard error log
+#SBATCH --output=/scratch/ac05869/KRT_AA_AB_sc/err_out/%x_%j.out		# Standard output log
+#SBATCH --error=/scratch/ac05869/KRT_AA_AB_sc/err_out/%x_%j.err		# Standard error log
 #SBATCH --mail-user=ac05869@uga.edu    # Where to send mail
 #SBATCH --mail-type=END,FAIL          	# Mail events (BEGIN, END, FAIL, ALL)
 
@@ -28,10 +28,6 @@ fi
 #set working directory
 cd ${OUTDIR}
 
-#merge pipseeker barcoded reads for input
-cat ../barcoded_fastqs/barcoded_*_R1.fastq.gz > ../barcoded_fastqs/${LIB}_all_barcoded_R1.fastq.gz
-cat ../barcoded_fastqs/barcoded_*_R2.fastq.gz > ../barcoded_fastqs/${LIB}_all_barcoded_R2.fastq.gz
-
 ml STAR/2.7.10b-GCC-11.3.0
 
 STAR --runThreadN 24 \
@@ -41,6 +37,7 @@ STAR --runThreadN 24 \
 --readFilesCommand zcat \
 --outFileNamePrefix ${LIB}_ \
 --outSAMtype BAM SortedByCoordinate \
+--limitBAMsortRAM 17296580376 \
 --alignIntronMax 5000 \
 --soloType CB_UMI_Simple \
 --soloUMIlen 12 \
