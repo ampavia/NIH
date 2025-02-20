@@ -36,7 +36,7 @@ cat ../barcoded_fastqs/barcoded_*_R2.fastq.gz > ../barcoded_fastqs/${LIB}_all_ba
 ml STAR/2.7.10b-GCC-11.3.0
 
 STAR --runThreadN 24 \
---genomeDir /scratch/ac05869/nih/kratom/star_index \
+--genomeDir /scratch/ac05869/nih/kratom/star_index_mitr_v1/ \
 --readFilesIn ../barcoded_fastqs/${LIB}_all_barcoded_R2.fastq.gz \
 ../barcoded_fastqs/${LIB}_all_barcoded_R1.fastq.gz \
 --readFilesCommand zcat \

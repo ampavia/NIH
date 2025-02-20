@@ -28,7 +28,7 @@ sbatch --array 1-2 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt ~
 #Index BAM output from star
 sbatch --array 1-4 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt /home/ac05869/nih/kratom/samtools_bam_to_bam.bai.sh
 
-## STARsolo CellFiltering (EmptyDrops_CR) algorithm for all 4 stem and leaf libraries
+## STARsolo CellFiltering (EmptyDrops_CR) algorithm
 
 ###method 1 by hand
 cd /scratch/ac05869/nih/kratom/star_results/old_genome/MIT_AH/MIT_AH_Solo.out/GeneFull/raw/

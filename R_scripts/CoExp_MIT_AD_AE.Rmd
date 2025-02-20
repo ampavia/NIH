@@ -6,8 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-
+knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse)
 library(igraph)
 library(ggraph)
@@ -16,7 +15,6 @@ library(readxl)
 library(patchwork)
 library(RColorBrewer)
 library(viridis)
-
 set.seed(666)
 ```
 
@@ -149,7 +147,8 @@ edge_table <- edge_table %>%
   )) %>%
   mutate(FDR = p.adjust(p.value, method = "fdr"))
 
-saveRDS(edge_table, file = "/scratch/ac05869/nih/coexpression/kratom_stem/Results/MIT_AD_AE_edge_table_all_genes.rds")
+#saveRDS(edge_table, file = "/scratch/ac05869/nih/coexpression/kratom_stem/Results/MIT_AD_AE_edge_table_all_genes.rds")
+edge_table <- readRDS("/scratch/ac05869/nih/coexpression/kratom_stem/Results/MIT_AD_AE_edge_table_all_genes.rds")
 ```
 
 You can look at various adjusted p value cutoffs and the corresponding r value before proceeding. Let's say we just look at positively correlated genes.
@@ -167,8 +166,8 @@ edge_table %>%
 ```
 
 
-If you cut off the FDR at 0.05, then your r values are 0.511 or larger. 
-If you cut off the FDR at 0.01, then your r values are 0.627  or larger. 
+If you cut off the FDR at 0.05, then your r values are 0.585 or larger. 
+If you cut off the FDR at 0.01, then your r values are 0.685  or larger. 
 Not very high, but it is what it is. 
 
 ### Empirical determination using bait genes and rank distribution 
