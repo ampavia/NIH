@@ -517,3 +517,113 @@ Marker_dot_wrapped
 ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_wrapped_dot.png", width = 18, height = 8)
 ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/MIT_AH_AI_wrapped_dot.svg", width = 18, height = 8)
 ```
+
+# UMAP
+```{r}
+UMAP2 <- DimPlot(leaf.combined, reduction = "umap", label = T, label.size = 5, repel = T) +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  )
+UMAP2
+```
+
+# UMAP with cell type info
+```{r}
+levels(leaf.combined) <- c(
+   "0", "2", "3", "7", "11", "15", #M
+    "1","6", "10", "16", #Epi
+   "14", #GC
+    "12", "13", "18", #X
+    "4", "5", "9", "19", "21", #Ph
+    "8", "17", #prolif
+    "20", "22" #IPAP
+  )
+
+UMAP2 <- DimPlot(leaf.combined, reduction = "umap", 
+                 label = T, label.size = 5, repel = T) + 
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black"),
+    legend.position = "none"
+  )
+
+UMAP2
+```
+## leaf cell type assignment
+
+```{r}
+leaf_cell_type_assignment <- data.frame(
+  cluster = c(0:22)
+) %>% 
+  mutate(cell_type = case_when(
+    cluster == 0 | 
+      cluster == 2 | 
+      cluster == 3 | 
+      cluster == 7 | 
+      cluster == 11 | 
+      cluster == 15  ~ "Mesophyll",
+    cluster == 1 | 
+      cluster == 6 | 
+      cluster == 10 | 
+      cluster == 16 ~ "Epidermis",
+    cluster == 14 ~ "Guard cells",
+    cluster == 4 |
+      cluster == 5 |
+      cluster == 9 |
+      cluster == 12 |
+      cluster == 13 |
+      cluster == 18 |
+      cluster == 19 |
+      cluster == 21  ~ "Vasculature",
+    cluster == 8 |
+      cluster == 17 ~ "Proliferating",
+    cluster == 20 |
+      cluster == 22 ~ "IPAP",
+    T ~ "Unassigned"
+  )) %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Vasculature", 
+                              "Proliferating", "IPAP", "Unassigned"
+                            ))) %>% 
+  mutate(cluster = factor(cluster, levels = c(
+    "0", "2", "3", "7", "11", "15", #M
+    "1","6", "10", "16", #Epi
+   "14", #GC
+    "12", "13", "18", #X
+    "4", "5", "9", "19", "21", #Ph
+    "8", "17", #prolif
+    "20", "22" #IPAP
+  )))
+```
+
+
+```{r}
+leaf_assignment_graph <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "")) +
+  facet_wrap(~ cell_type, scales = "free", ncol = 2) +
+  geom_point(size = 5, aes(color = cluster)) +
+  geom_text(aes(label = cluster)) +
+  labs(x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    panel.grid = element_blank(),
+    text = element_text(size = 20, color = "black"),
+    axis.text.x = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA)
+    )
+
+RNA_umap <- wrap_plots(UMAP2 +
+                         labs(tag = "MIT_AH_AI"), leaf_assignment_graph, 
+           nrow = 2 , heights = c(1, 0.7))
+
+RNA_umap
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/UMAP_cluster_annotation.png", height = 4, width = 3, bg = "white")
+ggsave("/scratch/ac05869/nih/pop_markers/kratom_leaf/UMAP_cluster_annotation.svg", height = 4, width = 3, bg = "white")
+```
