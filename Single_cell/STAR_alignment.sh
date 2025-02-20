@@ -29,6 +29,10 @@ fi
 #set working directory
 cd ${OUTDIR}
 
+#merge pipseeker barcoded reads for input
+cat ../barcoded_fastqs/barcoded_*_R1.fastq.gz > ../barcoded_fastqs/${LIB}_all_barcoded_R1.fastq.gz
+cat ../barcoded_fastqs/barcoded_*_R2.fastq.gz > ../barcoded_fastqs/${LIB}_all_barcoded_R2.fastq.gz
+
 ml STAR/2.7.10b-GCC-11.3.0
 
 STAR --runThreadN 24 \
@@ -47,6 +51,11 @@ STAR --runThreadN 24 \
 --soloFeatures GeneFull \
 --soloCellFilter EmptyDrops_CR \
 --soloMultiMappers EM \
+
+#index bam file
+ml purge
+ml SAMtools/1.14-GCC-11.2.0
+samtools index -@ 24 ${LIB}_Aligned.sortedByCoord.out.bam
 
 #Parameters 
 #sbatch --array 1-2 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt ~/NIH/Single_cell/STAR_alignment.sh
