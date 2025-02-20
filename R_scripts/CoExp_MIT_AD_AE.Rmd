@@ -7,10 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-```
 
-
-```{r setup, include=FALSE}
 library(tidyverse)
 library(igraph)
 library(ggraph)
@@ -22,6 +19,7 @@ library(viridis)
 
 set.seed(666)
 ```
+
 
 # Create Matrices
 ## Find Markers 

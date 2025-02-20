@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=STAR_alignment		# Job name 
+#SBATCH --job-name=STAR_script_test		# Job name 
 #SBATCH --partition=batch		# Partition name (batch, highmem_p, or gpu_p)
 #SBATCH --ntasks=2		# aka threads. Each task by default using 1 CPU core on a single node
-#SBATCH --cpus-per-task=12	 	# CPU core count per task, by default 1 CPU core per task
+#SBATCH --cpus-per-task=24	 	# CPU core count per task, by default 1 CPU core per task
 #SBTACH --array=1-2				# Array element range from 0 to 1, i.e. 2 element jobs
 #SBATCH --mem=100GB			# Memory per node (30GB); by default using M as unit
 #SBATCH --time=48:00:00              	# Time limit hrs:min:sec or days-hours:minutes:seconds
@@ -20,7 +20,7 @@
 #INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt
 LIB=`head -n ${SLURM_ARRAY_TASK_ID} ${INFILE} | cut -f 1 | tail -n 1`
 
-OUTDIR="/scratch/ac05869/KRT_AA_AB_sc/${LIB}/STARsolo"
+OUTDIR="/scratch/ac05869/KRT_AA_AB_sc/${LIB}/STARsolo_array_test"
 if [ ! -d ${OUTDIR} ]
 then
     mkdir -p ${OUTDIR}
@@ -29,13 +29,9 @@ fi
 #set working directory
 cd ${OUTDIR}
 
-#merge pipseeker barcoded reads for input
-cat ../barcoded_fastqs/barcoded_*_R1.fastq.gz > ../barcoded_fastqs/${LIB}_all_barcoded_R1.fastq.gz
-cat ../barcoded_fastqs/barcoded_*_R2.fastq.gz > ../barcoded_fastqs/${LIB}_all_barcoded_R2.fastq.gz
-
 ml STAR/2.7.10b-GCC-11.3.0
 
-STAR --runThreadN 24 \
+STAR --runThreadN 2 \
 --genomeDir /scratch/ac05869/nih/kratom/star_index \
 --readFilesIn ../barcoded_fastqs/${LIB}_all_barcoded_R2.fastq.gz \
 ../barcoded_fastqs/${LIB}_all_barcoded_R1.fastq.gz \
