@@ -30,4 +30,4 @@ ml purge
 ml SAMtools/1.14-GCC-11.2.0
 samtools index -@ 12 ${LIB}_Aligned.sortedByCoord.out.bam
 
-#sbatch --array 1-4 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt ~/NIH/Single_cell/samtools_index.sh
+#sbatch --array 1-2 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt ~/NIH/Single_cell/samtools_index.sh
