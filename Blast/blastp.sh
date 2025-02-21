@@ -32,7 +32,7 @@ module load BLAST+/2.14.1-gompi-2023a
 makeblastdb -in ${FILE} -parse_seqids -dbtype nucl
 
 blastn -num_threads 4 \
-       -query $QUERY \
+       -query ${QUERY} \
        -db ${CDNA} \
        -max_target_seqs 10 \
        -outfmt 6 \
