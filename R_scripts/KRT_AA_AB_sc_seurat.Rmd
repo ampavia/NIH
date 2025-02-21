@@ -165,14 +165,14 @@ ggsave("/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_cutoffs.png", height = 8
 #Based on above plots filter dataset appropriately
 
 ```{r}
-AA #47288 features across 7571 
+AA #70041 features across 8004 
 AA <- subset(AA, subset = nFeature_RNA > 500 & nFeature_RNA < 13000 & nCount_RNA > 500 & nCount_RNA < 50000)
-AA #47288 features across 6553 samples
+AA #70041 features across 7234 samples
 
 
-AB #45896 features across 6173 samples
+AB #67918 features across 6443 samples
 AB <- subset(AB, subset = nFeature_RNA > 500 & nFeature_RNA < 13000 & nCount_RNA > 500 & nCount_RNA < 50000)
-AB #45896 features across 5525 samples
+AB #67918 features across 6046 samples
 
 
 ```
@@ -284,18 +284,18 @@ UMAP2
 ## General Stats
 
 ```{r}
-#Cells in each cluster
+#Cells in each cluster: 843 839 654 626 624 609 549 509 459 403 303 277 200 169  94  43  33
 table(Idents(AA))
-# Cells in each replicate: 6553
+# Cells in each replicate: 7234
 table(AA$orig.ident)
-#How does cluster membership vary by replicate? 17 total clusters
+#How does cluster membership vary by replicate? 17  clusters
 table(Idents(AA), AA$orig.ident)
 
-#Cells in each cluster
+#Cells in each cluster:758 623 600 547 538 504 431 378 348 297 282 219 168 137  94  65  57
 table(Idents(AB))
-# Cells in each replicate: 5525
+# Cells in each replicate: 6046
 table(AB$orig.ident)
-#How does cluster membership vary by replicate? 16 clusters
+#How does cluster membership vary by replicate? 17 clusters
 table(Idents(AB), AB$orig.ident)
 ```
 
@@ -386,10 +386,10 @@ AA_doublet_test <- doubletFinder(AA, PCs = 1:50, pN = 0.25, pK = 0.01, nExp = nE
 AA_doublet_test
 
 #the DF.classifications_0.25 will need to change! The next two values are the pK you choose and the number of doublets found (nExp_poi)
-DimPlot(AA_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = "DF.classifications_0.25_0.01_459")+theme(aspect.ratio = 1)
-sum(str_count(AA_doublet_test$DF.classifications_0.25_0.01_459, "Doublet"))
+DimPlot(AA_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = "DF.classifications_0.25_0.01_506")+theme(aspect.ratio = 1)
+sum(str_count(AA_doublet_test$DF.classifications_0.25_0.01_506, "Doublet"))
 
-# 459 doublets out of 6553 cells (KRT_AA)
+# 506 doublets (KRT_AA)
 
 #Save a UMAP of which cells were the doublets
 ##Does this match your expectations from the Violin plots of the clusters we made earlier?
@@ -430,13 +430,13 @@ nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
 ## AB doublet test
 ## Run DoubletFinder with varying classification stringencies ----------------------------------------------------------------
 #Update pK to be pK choosen from above steps!
-AB_doublet_test <- doubletFinder(AB, PCs = 1:50, pN = 0.25, pK = 0.06, nExp = nExp_poi, reuse.pANN = FALSE, sct = FALSE)
+AB_doublet_test <- doubletFinder(AB, PCs = 1:50, pN = 0.25, pK = 0.04, nExp = nExp_poi, reuse.pANN = FALSE, sct = FALSE)
 
-AB_doublet_test # 387 doublets out of 5525 cells
+AB_doublet_test # 423 doublets out of 5525 cells
 
 #the DF.classifications_0.25 will need to change! The next two values are the pK you choose and the number of doublets found
-DimPlot(AB_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = "DF.classifications_0.25_0.06_387" )+theme(aspect.ratio = 1)
-sum(str_count(AB_doublet_test$DF.classifications_0.25_0.06_387, "Doublet"))
+DimPlot(AB_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = "DF.classifications_0.25_0.04_423" )+theme(aspect.ratio = 1)
+sum(str_count(AB_doublet_test$DF.classifications_0.25_0.04_423, "Doublet"))
 
 #Save a UMAP of which cells were the doublets
 ##Does this match your expectations from the Violin plots of the clusters we made earlier?
@@ -468,10 +468,10 @@ saveRDS(AB_doublet_test, file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB
 ## Filter Doublets
 ```{r}
 #AA
-AA_clean <- subset(AA_doublet_test, subset = DF.classifications_0.25_0.01_459 == "Singlet") #AA DF.classifications_0.25_0.005_1013
+AA_clean <- subset(AA_doublet_test, subset = DF.classifications_0.25_0.01_506 == "Singlet") #AA DF.classifications_0.25_0.01_506
 AA_clean # 6553 --> 6094 cells
 #AB
-AB_clean <- subset(AB_doublet_test, subset = DF.classifications_0.25_0.06_387 == "Singlet") #AB DF.classifications_0.25_0.01_802
+AB_clean <- subset(AB_doublet_test, subset = DF.classifications_0.25_0.04_423 == "Singlet") #AB DF.classifications_0.25_0.04_423
 AB_clean #5525 --> 5138 cells
 #take note of number of doublets that were filtered out. 
 ```
