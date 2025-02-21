@@ -33,7 +33,7 @@ makeblastdb -in ${FILE} -parse_seqids -dbtype nucl
 
 blastn -num_threads 4 \
        -query ${QUERY} \
-       -db ${CDNA} \
+       -db ${FILE} \
        -max_target_seqs 10 \
        -outfmt 6 \
        -out ../blastn.${SLURM_JOB_ID}.tsv
