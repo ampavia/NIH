@@ -15,7 +15,7 @@
 #       Output: top 4 hits
 ################################################################################
 #set output directory and input file variables
-QUERY="/home/ac05869/nih/kratom_pathway/RED03.fasta"                # replace cbergman in the following line with your myid
+QUERY="/scratch/ac05869/nih/kratom_pathway/RED03.fasta"                # replace cbergman in the following line with your myid
 CDNA="/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.working_models.cdna.fa"
 FILE=$(basename $CDNA)
 OUTDIR="/scratch/ac05869/nih/kratom_pathway/blast/db" 
