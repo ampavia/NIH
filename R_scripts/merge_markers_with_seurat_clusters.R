@@ -37,7 +37,7 @@ pop_markers <- pop_markers %>% # Replace the IPAP kratom genes from the blastp a
 
 head(pop_markers)
 
-cluster_markers <- read_delim("../MIT_KRT_leaf_comb_sc/seurat_out/annotated_KRT_MIT_integrated_markers_minpct0.25_minlfc0.25_21feb25.txt5.txt", delim = "\t", col_names = T) %>% rename("gene_ID" = "ID")
+cluster_markers <- read_delim("/Users/anne_collart/Desktop/MIT_KRT_leaf_comb_sc/seurat_out/annotated_KRT_MIT_integrated_markers_minpct0.25_minlfc0.25_21feb25.txt", delim = "\t", col_names = T) %>% rename("gene_ID" = "ID")
 cluster_markers$gene_ID <- gsub(pattern = "_", replacement = "-", cluster_markers$gene_ID)
 head(cluster_markers)
 
@@ -49,5 +49,5 @@ cluster_markers2 <- inner_join(cluster_markers, pop_markers, by = "gene_ID", rel
   distinct(gene_ID, .keep_all = TRUE)
 head(cluster_markers2)
 
-#write.table(cluster_markers2, file = "./KRT_MIT_leaf_seurat_markers_with_pop_markers_14feb25.txt", quote = F, col.names = T)
-#write.csv(cluster_markers2, file = "./KRT_MIT_leaf_seurat_markers_with_pop_markers_14feb25.csv")
+write.table(cluster_markers2, file = "./KRT_MIT_leaf_seurat_markers_with_pop_markers_24feb25.txt", quote = F, col.names = T)
+write.csv(cluster_markers2, file = "./KRT_MIT_leaf_seurat_markers_with_pop_markers_24feb25.csv")
