@@ -187,9 +187,9 @@ table(Idents(leaf.combined), leaf.combined$orig.ident)
 
 ## Save cleaned integrated RDS Object
 ```{r}
-saveRDS(leaf.combined, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_cleaned_integrated_seurat_21feb25.rds")
+#saveRDS(leaf.combined, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_data/KRT_MIT_cleaned_integrated_seurat_21feb25.rds")
 
-#leaf.combined <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_cleaned_integrated_seurat_21feb25.rds")
+leaf.combined <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_data/KRT_MIT_cleaned_integrated_seurat_21feb25.rds")
 ```
 
 # Create Matrices
@@ -220,7 +220,7 @@ cluster.averages
 
 # How can I extract expression matrix for all Cluster 0 cells (perhaps, to load into another package)
 cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ])
-write.table(cluster_avg.data, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_AA_AB_clean_integrated_cluster_avg_normalized_counts_20jan25.txt", sep = "\t", quote = FALSE)
+#write.table(cluster_avg.data, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_cluster_avg_normalized_counts_21jan25.txt", sep = "\t", quote = FALSE)
 ```
 
 # Make Plots
@@ -229,7 +229,97 @@ write.table(cluster_avg.data, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seura
 ```{r}
 #Need to create a file that has your marker genes and some metadata (cell types, etc.). Change all underscores to either dashes or periods
 
-allwin <- read.table("/home/ac05869/nih/allwin_pathway_genes_19feb25.txt", header = TRUE, sep = "\t")
+allwin <- read.table("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/allwin_pathay_top2_25feb25.txt", header = TRUE, sep = "\t")
+allwin$kratom.id <- gsub("\\.\\d+$", "", allwin$kratom.id) #remove transcript syntax to match seurat object
+allwin$kratom.id <- gsub("_", "-", allwin$kratom.id)
+allwin <- allwin %>% distinct(kratom.id, .keep_all = T)
+  #remove duplicates
+head(allwin)
+
+rev_allwin <- allwin[order(nrow(allwin):1),]
+```
+
+## Find missing genes
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+
+DotPlot(leaf.combined, features = unique(rev_allwin$kratom.id), 
+        ) +
+  scale_x_discrete(labels=rev_allwin$gene.abbreviation) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Cluster",
+       x = "Genes") + 
+  coord_flip()
+```
+
+## Remove genes
+```{r}
+#Remove everything that has no expression based on the error messages from making the above plot
+#View(allwin) ##see row in which the variable was not found in order to subset
+subset <- str_trim(paste(scan("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/missing_in_leaf.txt", what = "character", sep = c(",", " "))))
+
+allwin_subset <- allwin %>%
+  filter(! as.character(kratom.id) %in% as.character(subset))
+
+(rev_allwin_subset <- allwin_subset %>% arrange(desc(order))) #another way to do it if your data has "order" column
+```
+
+## Make dot plot
+```{r}
+showtext_auto(enable = FALSE)
+#plot only genes with expression
+(dotplot_data <- DotPlot(leaf.combined, features = unique(rev_allwin_subset$kratom.id))$data)
+(unique(rev_allwin_subset$kratom.id)) #Count if any duplicate gene ID's
+
+dotplot_data %>% 
+  inner_join(rev_allwin_subset %>% 
+               distinct(kratom.id, .keep_all = T), by = c("features.plot"="kratom.id")) %>%
+  mutate(tag = paste(gene.abbreviation, features.plot)) %>%
+  ggplot(aes(x = id, y = reorder(tag,order, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster") + 
+  theme_classic()
+
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/KRT_MIT_allwin_pathway_top2_hits_25feb25.png", height = 10, width = 12, bg = "white")
+```
+
+## Make dot plot split by source (MPI vs UGA)
+```{r}
+showtext_auto()
+#plot only genes with expression
+dotplot_data <- DotPlot(leaf.combined, features = unique(rev_allwin_subset$kratom.id), split.by = "source")$data %>%
+  mutate(source = case_when(
+    str_detect(id, "UGA") ~ "UGA",
+    str_detect(id, "MPI") ~ "MPI"
+  )) %>%
+  mutate(id2 = str_sub(id, start = 1, end = -5))
+unique(rev_allwin_subset$kratom.id) #Count if any duplicate gene ID's
+
+dotplot_data %>% 
+  inner_join(rev_allwin_subset %>% 
+               distinct(kratom.id, .keep_all = T), by = c("features.plot"="kratom.id")) %>%
+  mutate(tag = paste(gene.abbreviation, features.plot)) %>%
+  ggplot(aes(x = id2, y = reorder(tag,order, decreasing = TRUE))) +
+  facet_wrap(~ source) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  theme(text = element_text(size = 26)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster") + 
+  theme_classic()
+
+dotplot_data
+
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/by_source_KRT_MIT_allwin_pathway_top2_hits_25feb25.png", height = 10, width = 12, bg = "white")
+```
+
+## Look at top hit
+```{r}
+#Need to create a file that has your marker genes and some metadata (cell types, etc.). Change all underscores to either dashes or periods
+
+allwin <- read.table("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/allwin_top_pathway_gene_leaf.txt", header = TRUE, sep = "\t")
 allwin$kratom.id <- gsub("\\.\\d+$", "", allwin$kratom.id) #remove transcript syntax to match seurat object
 allwin$kratom.id <- gsub("_", "-", allwin$kratom.id)
 allwin <- allwin %>%
@@ -250,37 +340,85 @@ DotPlot(leaf.combined, features = unique(rev_allwin$kratom.id),
   labs(y = "Cluster",
        x = "Genes") + 
   coord_flip()
+
+#missing in top hit: Mitsp.v1.03-2G022350 (TDC), used the 4th best hit for TDC (Mitsp.v1.21_1G011780.1)
 ```
 
-
+## Make dot plot
 ```{r}
-#I want to save a table with the expressed genes and the cluster average expression data
-
-cluster_avg.data2 <- dplyr::as_tibble(cluster_avg.data, rownames = "kratom.id")
-
-pathway_genes_and_cluster_avg <- left_join(annie_pathway_genes_subset, cluster_avg.data2, by = "kratom.id", copy = TRUE)
-
-write.csv(pathway_genes_and_cluster_avg, file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/pathway_genes_top_4_hits_and_cluster_avg_expression_14jan25.csv", quote = FALSE)
-```
-
-
-```{r}
-#Based on highest average expression across all clusters, which I found in the csv file generated above, I chose the following genes from the top 4 hits to graph the dot plot
-
-highest_expressed_genes <- read.table("/scratch/ac05869/nih/kratom/marker_genes/kratom_leaf_pathway_for_R_14jan25.txt", header = TRUE, sep = "\t")
-head(highest_expressed_genes)
-#View(highest_expressed_genes)
-rev_highest_expressed_genes <- highest_expressed_genes[order(nrow(highest_expressed_genes):1),]
-
 #plot only genes with expression
-DotPlot(leaf.combined, features = unique(rev_highest_expressed_genes$kratom.id), 
-        ) +
-  scale_x_discrete(labels=rev_highest_expressed_genes$gene.abbreviation) +
+(dotplot_data <- DotPlot(leaf.combined, features = unique(rev_allwin_subset$kratom.id))$data)
+(unique(rev_allwin_subset$kratom.id)) #Count if any duplicate gene ID's
+
+dotplot_data %>% 
+  inner_join(rev_allwin_subset %>% 
+               distinct(kratom.id, .keep_all = T), by = c("features.plot"="kratom.id")) %>%
+  mutate(tag = paste(gene.abbreviation, features.plot)) %>%
+  ggplot(aes(x = id, y = reorder(tag,order, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  theme(text = element_text(size = 26)) +
   scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
-  labs(y = "Cluster",
-       x = "Genes") + 
-  coord_flip()
+  labs(y = "Genes",
+       x = "Cluster") + 
+  theme_classic()
 
-ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/KRT_AA_AB_integrated_full_pathway_highest_expressed.png", height = 15, width = 12, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/seurat_KRT_MIT_leaf_allwin_top_hit_25feb25.png", height = 10, width = 12, bg = "white")
+```
 
+# C. roseus pathway dotplot 
+```{r}
+cros <- read.table("/scratch/ac05869/MIT_KRT_sc_analysis/cros_allwin_in_kratom.txt", header = TRUE, sep = "\t")
+cros$kratom.id <- gsub("\\.\\d+$", "", cros$kratom.id) #remove transcript syntax to match seurat object
+cros$kratom.id <- gsub("_", "-", cros$kratom.id)
+rev_cros <- cros[order(nrow(cros):1),]
+head(rev_cros)
+```
+
+## Make dot plot
+```{r}
+#plot only genes with expression
+dotplot_data <- DotPlot(leaf.combined, features = unique(rev_cros$kratom.id))$data
+
+dotplot_data %>% 
+  inner_join(rev_cros %>% 
+               distinct(kratom.id, .keep_all = T), by = c("features.plot"="kratom.id")) %>%
+  mutate(tag = paste(gene.abbreviation, features.plot)) %>%
+  ggplot(aes(x = id, y = reorder(tag,order, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  theme(text = element_text(size = 26)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster") + 
+  theme_classic()
+
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/seurat_KRT_MIT_leaf_cros_allwin_pathway_top_hit_25feb25.png", height = 10, width = 12, bg = "white")
+```
+
+## Make dot plot split by source (MPI vs UGA)
+```{r}
+showtext_auto(enable = FALSE)
+#plot only genes with expression
+dotplot_data <- DotPlot(leaf.combined, features = unique(rev_cros$kratom.id), split.by = "source")$data %>%
+  mutate(source = case_when(
+    str_detect(id, "UGA") ~ "UGA",
+    str_detect(id, "MPI") ~ "MPI"
+  )) %>%
+  mutate(id2 = str_sub(id, start = 1, end = -5))
+
+dotplot_data %>% 
+  inner_join(rev_cros %>% 
+               distinct(kratom.id, .keep_all = T), by = c("features.plot"="kratom.id")) %>%
+  mutate(tag = paste(gene.abbreviation, features.plot)) %>%
+  ggplot(aes(x = id2, y = reorder(tag,order, decreasing = TRUE))) +
+  facet_wrap(~ source) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  theme(text = element_text(size = 26)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster") + 
+  theme_classic()
+
+dotplot_data
+
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/by_source_KRT_MIT_MEP_IR_Allwin_pathway_25feb25.png", height = 10, width = 12, bg = "white")
 ```
