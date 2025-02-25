@@ -43,6 +43,11 @@ leaf_markers2 <- leaf_markers %>%
   dplyr::select(Primary_Gene_Symbol, cell_type, gene_ID, functional_annotation, source) %>%
   dplyr::filter(is.na(gene_ID) == F)
 head(leaf_markers2)
+
+#Add C. roseus IPAP marker
+leaf_markers2[nrow(leaf_markers2) + 1,] <- as.list(c("7DLH","IPAP_cros", "Mitsp.v1.21-1G007810", "cytochrome P450, family 72, subfamily A, polypeptide", "c.ros leaf"))
+leaf_markers2[nrow(leaf_markers2) + 1,] <- as.list(c("7DLH","IPAP_cros", "Mitsp.v1.21-2G007890", "cytochrome P450, family 72, subfamily A, polypeptide", "c.ros leaf"))
+tail(leaf_markers2)
 ```
 
 
@@ -559,8 +564,7 @@ UMAP2
 ```
 ## leaf cell type assignment
  "0", "3", "6", "7", "13", "14", #M
-    "1","11", "15", "18", #Epi
-   "9", #GC
+    "1","9", "11", "15", 18", #Epi
     "4", "8", "16", #X
     "2", "12", "20", #Ph
     "5", "10", #prolif
@@ -580,10 +584,10 @@ leaf_cell_type_assignment <- data.frame(
       cluster == 13 |
       cluster == 14 ~ "Mesophyll",
     cluster == 1 | 
+      cluster == 9 |
       cluster == 11 | 
       cluster == 15 | 
       cluster == 18 ~ "Epidermis",
-    cluster == 9 ~ "Guard cells",
     cluster == 4 |
       cluster == 8 |
       cluster == 16 ~ "Xylem",
@@ -604,13 +608,12 @@ leaf_cell_type_assignment <- data.frame(
                             ))) %>% 
   mutate(cluster = factor(cluster, levels = c(
     "0", "3", "6", "7", "13", "14", #M
-    "1","11", "15", "18", #Epi
-   "9", #GC
+    "1","9", "11", "15", "18", #Epi
     "4", "8", "16", #X
     "2", "12", "20", #Ph
     "5", "10", #prolif
-    "19", #IPAP/MEP+
-   "21", #IPAP
+    "19", ##IPAP/MEP+
+    "21", #IPAP
    "17", "22" #Unknown
   )))
 ```
@@ -654,10 +657,10 @@ leaf_cell_type_assignment2 <- data.frame(
       cluster == 13 |
       cluster == 14 ~ "Mesophyll",
     cluster == 1 | 
+      cluster == 9 |
       cluster == 11 | 
       cluster == 15 | 
       cluster == 18 ~ "Epidermis",
-    cluster == 9 ~ "Guard cells",
     cluster == 4 |
       cluster == 8 |
       cluster == 16 |
@@ -678,13 +681,12 @@ leaf_cell_type_assignment2 <- data.frame(
                             ))) %>% 
   mutate(cluster = factor(cluster, levels = c(
     "0", "3", "6", "7", "13", "14", #M
-    "1","11", "15", "18", #Epi
-   "9", #GC
+    "1","9", "11", "15", "18", #Epi
     "4", "8", "16", #X
     "2", "12", "20", #Ph
     "5", "10", #prolif
-    "19", #IPAP/MEP+
-   "21", #IPAP
+    "19", ##IPAP/MEP+
+    "21", #IPAP
    "17", "22" #Unknown
   )))
 ```
