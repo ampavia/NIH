@@ -21,7 +21,7 @@ library(ggpubr)
 
 #Load Seurat object
 ```{r}
-leaf.combined <- readRDS("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/MIT_AH_AI_cleaned_integrated_seurat_14jan25.rds")
+leaf.combined <- readRDS("/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AA_AB_cleaned_integrated_seurat_20feb25.rds")
 ```
 
 # Create Matrices
@@ -91,7 +91,7 @@ dotplot_data %>%
        x = "Cluster") + 
   theme_classic()
 
-ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/MIT_AH_AI_new_allwin_pathway_top_several_hits.png", height = 10, width = 12, bg = "white")
+ggsave("/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AA_AB_new_allwin_pathway_top_several_hits.png", height = 10, width = 12, bg = "white")
 ```
 
 
@@ -150,5 +150,5 @@ dotplot_data %>%
        x = "Cluster") + 
   theme_classic()
 
-ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/MIT_AH_AI_new_allwin_pathway_top_hit.png", height = 10, width = 12, bg = "white")
+ggsave("/scratch/ac05869/KRT_AA_AB_sc/seuratMIT_AH_AI_new_allwin_pathway_top_hit.png", height = 10, width = 12, bg = "white")
 ```

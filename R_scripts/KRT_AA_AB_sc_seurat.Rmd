@@ -449,7 +449,7 @@ ggsave("/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_doubletfinder_UMAP.png",
 ```{r}
 saveRDS(AA_doublet_test, file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AA_doublet_finder_seurat_20feb25.rds")
 
-saveRDS(AB_doublet_test, file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_doublet_finder_seurat_20jan25.rds")
+saveRDS(AB_doublet_test, file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_doublet_finder_seurat_20feb25.rds")
 
 #Notes:
 

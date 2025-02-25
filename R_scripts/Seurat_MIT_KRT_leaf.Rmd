@@ -1,0 +1,286 @@
+---
+title: "Integrate UGA and MPI single cell analysis with mitr_v1.asm"
+author: "Anne Pavia"
+output:
+  html_document:
+    df_print: paged
+#Notes: 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/scratch/ac05869/MIT_KRT_sc_analysis/Rwd")
+library(tidyverse)
+library(ggplot2)
+library(Seurat) 
+library(readxl)
+library(RColorBrewer)
+library(viridis)
+library(svglite) 
+library(patchwork)
+library(cowplot)
+library(ggpubr)
+library(showtext)
+showtext_auto()
+```
+Notes: AA and AB are reps of KRT uga leaf single cell data. AH and AI are reps of mpi leaf single cell data.
+
+
+# Load RDS Object post doublet filtering
+```{r}
+AA_clean <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_data/KRT_AA_doublets_removed_21feb25.rds")
+AB_clean <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_data/KRT_AB_doublets_removed_21feb25.rds")
+AH_clean <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_data/MIT_AH_doublets_removed_21feb25.rds")
+AI_clean <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_data/MIT_AI_doublets_removed_21feb25.rds")
+
+AA_clean$source <- "UGA"
+AB_clean$source <- "UGA"
+AH_clean$source <- "MPI"
+AI_clean$source <- "MPI"
+```
+
+# Re-Clustering Cleaned Data 
+
+Now that we have a clean dataset we need to re-cluster things to account for the removal of doublets 
+We can either re-run the above clustering steps for single samples OR we can integrate our replicates together at the same time
+
+## Normalize the Data
+```{r}
+
+#Default = LogNormalize
+
+AA_clean <- NormalizeData(AA_clean)
+AB_clean <- NormalizeData(AB_clean)
+AH_clean <- NormalizeData(AH_clean)
+AI_clean <- NormalizeData(AI_clean)
+```
+
+# Integrate all 4 reps at once
+## Integration via reciprocal PCA (RPCA)
+###Data Prep
+
+```{r}
+leaf.list <- list(AA_clean, AB_clean, AH_clean, AI_clean)
+
+# normalize and identify variable features for each dataset independently
+leaf.list <- lapply(X = leaf.list, FUN = function(x) {
+    x <- NormalizeData(x)
+    x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 3000)
+})
+
+# select features that are repeatedly variable across datasets for integration run PCA on each dataset using these features
+features <- SelectIntegrationFeatures(object.list = leaf.list, nfeatures = 3000)
+leaf.list <- lapply(X = leaf.list, FUN = function(x) {
+    x <- ScaleData(x, features = features, verbose = FALSE)
+    x <- RunPCA(x, features = features, verbose = FALSE)
+})
+```
+
+### Integration 
+```{r}
+leaf.anchors <- FindIntegrationAnchors(object.list = leaf.list, anchor.features = features, reduction = "rpca")
+
+# this command creates an 'integrated' data assay
+leaf.combined <- IntegrateData(anchorset = leaf.anchors)
+
+# specify that we will perform downstream analysis on the corrected data note that the
+# original unmodified data still resides in the 'RNA' assay
+DefaultAssay(leaf.combined) <- "integrated"
+```
+
+## Stats
+```{r}
+leaf.combined
+
+summary(leaf.combined$nFeature_RNA)
+summary(leaf.combined$nCount_RNA)
+
+```
+
+## Scale the Data
+```{r}
+leaf.combined.genes <- rownames(leaf.combined)
+leaf.combined <- ScaleData(leaf.combined, features = leaf.combined.genes)
+```
+
+## PCA
+```{r}
+leaf.combined$Run <- leaf.combined@meta.data$orig.ident
+leaf.combined <- RunPCA(leaf.combined, npcs = 75, features = VariableFeatures(object = leaf.combined), verbose = FALSE) # run PCA
+```
+
+```{r}
+ElbowPlot(leaf.combined, ndims = 75)
+```
+
+## Call Clusters
+```{r}
+leaf.combined <- FindNeighbors(leaf.combined, dims = 1:50) #adjust dims based on elbow plot above
+leaf.combined <- FindClusters(leaf.combined, resolution = 0.4) #adjustable resolution value. Check back and forth until it looks good
+leaf.combined <- RunUMAP(leaf.combined, dims = 1:50)
+```
+
+## Make UMAP Plots
+
+### By Run
+
+```{r}
+UMAP1 <- DimPlot(leaf.combined, reduction = "umap", label = T, label.size = 12, repel = T, split.by = "Run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 26, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 20)
+  ) +
+  ggtitle("Grouped by Replicates\n")
+
+UMAP1 #check to see that there are the same number of cluster in each rep: KRT_AB does not have cluster 23
+
+ggsave("../seurat_out/KRT_MIT_leaf_integrated_umap_by_run.png", height = 6, width = 18, bg = "white")
+```
+### By source
+
+```{r}
+UMAP2 <- DimPlot(leaf.combined, reduction = "umap", label = T, label.size = 12, repel = T, split.by = "source") +
+  theme_void() +
+  theme(
+    text = element_text(size = 26, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 20)
+  ) +
+  ggtitle("Grouped by Source")
+
+UMAP2 #check to see that there are the same number of cluster in each rep: KRT_AB does not have cluster 23
+
+ggsave("../seurat_out/KRT_MIT_leaf_integrated_umap_by_source.png", height = 6, width = 18, bg = "white")
+```
+
+
+
+### Combined
+```{r}
+UMAP3 <- DimPlot(leaf.combined, reduction = "umap", label = T, label.size = 12, repel = T) +
+  theme_void() +
+  theme(
+    text = element_text(size = 26, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 20)
+  )
+UMAP3
+ggsave("../seurat_out/KRT_MIT_leaf_integrated_umap_all_together.png", height = 8, width = 12, bg = "white")
+```
+
+## Stats - Integrated Clusters
+```{r}
+#Cells in each cluster
+table(Idents(leaf.combined))
+
+# Cells in each replicate
+table(leaf.combined$orig.ident)
+
+#How does cluster membership vary by replicate?
+table(Idents(leaf.combined), leaf.combined$orig.ident)
+
+#How does cluster membership vary by source?
+table(Idents(leaf.combined), leaf.combined$orig.ident)
+```
+
+## Save cleaned integrated RDS Object
+```{r}
+saveRDS(leaf.combined, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_cleaned_integrated_seurat_21feb25.rds")
+
+#leaf.combined <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_cleaned_integrated_seurat_21feb25.rds")
+```
+
+# Create Matrices
+## Find Markers 
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+
+leaf.combined = JoinLayers(leaf.combined)
+
+leaf.combined.markers <- FindAllMarkers(leaf.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+
+leaf.combined.markers %>% group_by(cluster)
+write.table(leaf.combined.markers, "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_all_markers_minpct0.25_minlfc0.25_21feb25.txt", quote = FALSE, sep = "\t", row.names = FALSE)
+#write_excel_csv("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_all_markers_minpct0.25_minlfc0.25_21feb25.txt", col_names = T)
+```
+
+## Find Average Expression
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(leaf.combined)
+Idents(leaf.combined) <- gsub(pattern = " ", replacement = "_", x = Idents(leaf.combined))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(leaf.combined) <- orig.levels
+cluster.averages <- AverageExpression(leaf.combined, return.seurat = TRUE)
+cluster.averages
+
+# How can I extract expression matrix for all Cluster 0 cells (perhaps, to load into another package)
+cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ])
+write.table(cluster_avg.data, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_AA_AB_clean_integrated_cluster_avg_normalized_counts_20jan25.txt", sep = "\t", quote = FALSE)
+```
+
+# Make Plots
+
+## Look at top several pathway genes
+```{r}
+#Need to create a file that has your marker genes and some metadata (cell types, etc.). Change all underscores to either dashes or periods
+
+allwin <- read.table("/home/ac05869/nih/allwin_pathway_genes_19feb25.txt", header = TRUE, sep = "\t")
+allwin$kratom.id <- gsub("\\.\\d+$", "", allwin$kratom.id) #remove transcript syntax to match seurat object
+allwin$kratom.id <- gsub("_", "-", allwin$kratom.id)
+allwin <- allwin %>%
+  distinct(kratom.id, .keep_all = T) #remove duplicates
+head(allwin)
+
+rev_allwin <- allwin[order(nrow(allwin):1),]
+```
+
+## Find missing genes
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+
+DotPlot(leaf.combined, features = unique(rev_allwin$kratom.id), 
+        ) +
+  scale_x_discrete(labels=rev_allwin$gene.abbreviation) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Cluster",
+       x = "Genes") + 
+  coord_flip()
+```
+
+
+```{r}
+#I want to save a table with the expressed genes and the cluster average expression data
+
+cluster_avg.data2 <- dplyr::as_tibble(cluster_avg.data, rownames = "kratom.id")
+
+pathway_genes_and_cluster_avg <- left_join(annie_pathway_genes_subset, cluster_avg.data2, by = "kratom.id", copy = TRUE)
+
+write.csv(pathway_genes_and_cluster_avg, file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/pathway_genes_top_4_hits_and_cluster_avg_expression_14jan25.csv", quote = FALSE)
+```
+
+
+```{r}
+#Based on highest average expression across all clusters, which I found in the csv file generated above, I chose the following genes from the top 4 hits to graph the dot plot
+
+highest_expressed_genes <- read.table("/scratch/ac05869/nih/kratom/marker_genes/kratom_leaf_pathway_for_R_14jan25.txt", header = TRUE, sep = "\t")
+head(highest_expressed_genes)
+#View(highest_expressed_genes)
+rev_highest_expressed_genes <- highest_expressed_genes[order(nrow(highest_expressed_genes):1),]
+
+#plot only genes with expression
+DotPlot(leaf.combined, features = unique(rev_highest_expressed_genes$kratom.id), 
+        ) +
+  scale_x_discrete(labels=rev_highest_expressed_genes$gene.abbreviation) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Cluster",
+       x = "Genes") + 
+  coord_flip()
+
+ggsave("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/KRT_AA_AB_integrated_full_pathway_highest_expressed.png", height = 15, width = 12, bg = "white")
+
+```

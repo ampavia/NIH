@@ -465,10 +465,8 @@ saveRDS(AI_doublet_test, file = "/scratch/ac05869/nih/kratom/seurat_analysis/mpi
 
 # Load RDS Object 
 ```{r}
-#AH_doublet_test <- 
-("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/MIT_AH_doublet_finder_seurat_13jan25.rds")
-#AI_doublet_test <- 
-("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/MIT_AI_doublet_finder_seurat_13jan25.rds")
+AH_doublet_test <- readRDS("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/MIT_AH_doublet_finder_seurat_14jan25.rds")
+AI_doublet_test <- readRDS("/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/MIT_AI_doublet_finder_seurat_14jan25.rds")
 
 ```
 
@@ -482,6 +480,10 @@ AI_clean <- subset(AI_doublet_test, subset = DF.classifications_0.25_0.01_802 ==
 AI_clean #11455 --> 10653 cells
 
 #take note of number of doublets that were filtered out. 
+
+saveRDS(AH_clean, "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_data/MIT_AH_doublets_removed_21feb25.rds")
+saveRDS(AI_clean, "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_data/MIT_AI_doublets_removed_21feb25.rds")
+
 ```
 
 ## Summary Statistics Cleaned Data: Number of Genes  
