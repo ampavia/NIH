@@ -641,3 +641,76 @@ RNA_umap
 ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation.png", height = 6, width = 4, bg = "white")
 ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation.svg", height = 6, width = 4, bg = "white")
 ```
+
+```{r}
+leaf_cell_type_assignment2 <- data.frame(
+  cluster = c(0:22)
+) %>% 
+  mutate(cell_type = case_when(
+    cluster == 0 | 
+      cluster == 3 | 
+      cluster == 6 | 
+      cluster == 7 | 
+      cluster == 13 |
+      cluster == 14 ~ "Mesophyll",
+    cluster == 1 | 
+      cluster == 11 | 
+      cluster == 15 | 
+      cluster == 18 ~ "Epidermis",
+    cluster == 9 ~ "Guard cells",
+    cluster == 4 |
+      cluster == 8 |
+      cluster == 16 |
+    cluster == 2 |
+      cluster == 12 |
+      cluster == 20 ~ "Vasculature",
+    cluster == 5 |
+      cluster == 10 ~ "Proliferating",
+    cluster == 19 ~ "MEP+",
+      cluster == 21 ~ "IPAP",
+    T ~ "Unassigned"
+  )) %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Vasculature",
+                              "Proliferating", "MEP+", "IPAP", "Unassigned"
+                            ))) %>% 
+  mutate(cluster = factor(cluster, levels = c(
+    "0", "3", "6", "7", "13", "14", #M
+    "1","11", "15", "18", #Epi
+   "9", #GC
+    "4", "8", "16", #X
+    "2", "12", "20", #Ph
+    "5", "10", #prolif
+    "19", #IPAP/MEP+
+   "21", #IPAP
+   "17", "22" #Unknown
+  )))
+```
+
+```{r}
+leaf_assignment_graph2 <- leaf_cell_type_assignment2 %>% 
+  ggplot(aes(x = cluster, y = "")) +
+  facet_wrap(~ cell_type, scales = "free", ncol = 2) +
+  geom_point(size = 5, aes(color = cluster)) +
+  geom_text(aes(label = cluster)) +
+  labs(x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    panel.grid = element_blank(),
+    text = element_text(size = 26, color = "black"),
+    axis.text.x = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA)
+    )
+
+RNA_umap <- wrap_plots(UMAP2 +
+                         labs(tag = "UGA and MPI leaf"), leaf_assignment_graph2, 
+           nrow = 2 , heights = c(1, 0.7))
+
+RNA_umap
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation_vasculature.png", height = 6, width = 4, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation_vasculature.svg", height = 6, width = 4, bg = "white")
+```
