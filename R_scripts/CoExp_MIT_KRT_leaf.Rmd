@@ -1,7 +1,7 @@
 ---
-title: "CoExp_MIT_AD_AE_no_gene_selection"
+title: "CoExp of MPI and UGA kratom leaf libraries (MIT_AH_AI and KRT_AA_AB)"
 author: "Anne Pavia"
-date: "2025-02-18"
+date: "2025-02-26"
 output: html_document
 ---
 
@@ -25,20 +25,23 @@ set.seed(666)
 # Create Matrices
 ## Find Markers 
 ```{r}
-stem.combined <- readRDS("/scratch/ac05869/nih/kratom/seurat_analysis/uga_kratom_stem_mitr.v1/MIT_AD_AE_cleaned_integrated_seurat_09jan25.rds")
-DefaultAssay(stem.combined) <- "RNA"
-cluster.averages <- AverageExpression(stem.combined, return.seurat = TRUE)
+leaf.combined <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_data/KRT_MIT_cleaned_integrated_seurat_21feb25.rds")
+DefaultAssay(leaf.combined) <- "RNA"
+cluster.averages <- AverageExpression(leaf.combined, return.seurat = TRUE)
 cluster.averages
 cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ]) 
 Exp_table <- cluster_avg.data
-colnames(Exp_table) <- as.factor(c(0:23))
+colnames(Exp_table) <- as.factor(c(0:22))
 
 head(Exp_table)
 dim(Exp_table)
 ```
 
 ```{r}
-Baits <- read_delim("/scratch/ac05869/nih/coexpression/kratom_stem/Data/iridoid_bait_genes.txt", delim = "\t", col_names = F, col_types = cols())
+Baits <- read_delim("/scratch/ac05869/MIT_KRT_sc_analysis/leaf_baits_26feb25.txt", delim = "\t", col_names = F, col_types = cols())
+Baits$X2 <- gsub(pattern = "_", replacement = "-", x = Baits$X2)
+Baits$X2 <- gsub("\\.\\d+$", "", Baits$X2)
+head(Baits)
 ```
 
 
@@ -150,11 +153,11 @@ edge_table <- edge_table %>%
   )) %>%
   mutate(FDR = p.adjust(p.value, method = "fdr"))
 
-saveRDS(edge_table, file = "/scratch/ac05869/nih/coexpression/kratom_stem/Results/MIT_AD_AE_edge_table_all_genes.rds")
+saveRDS(edge_table, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_edge_table_all_genes.rds")
 ```
 
 ```{r}
-edge_table <- readRDS("/scratch/ac05869/nih/coexpression/kratom_stem/Results/MIT_AD_AE_edge_table_all_genes.rds")
+edge_table <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_edge_table_all_genes.rds")
 ```
 
 You can look at various adjusted p value cutoffs and the corresponding r value before proceeding. Let's say we just look at positively correlated genes.
@@ -167,13 +170,13 @@ edge_table %>%
 
 edge_table %>% 
   filter(r > 0) %>% 
-  filter() %>% 
+  filter(FDR < 0.01) %>% 
   slice_min(order_by = abs(r), n = 10)
 ```
 
 
-If you cut off the FDR at 0.05, then your r values are 0.585 or larger. 
-If you cut off the FDR at 0.01, then your r values are 0.685  or larger. 
+> FDR cutoff at 0.05: then your r values are 0.532 or larger. 
+> FDR cutoff at 0.01, then your r values are 0.657  or larger. 
 
 ### Empirical determination using bait genes and rank distribution 
 If I go into this analysis not knowing any biology, then I would proceed with a t approximation followed by some p value cutoff.
@@ -182,18 +185,8 @@ This is where bait genes can be helpful.
 You can use the bait genes to determine the cutoff if you know two bait genes are involved in the same process. 
 The underlying assumption is if two bait genes are involved in the same process, they might be co-expressed. 
 Because this selection method is based on empirical observations, I argue this is better than using an arbitrary p value cutoff. 
-
-
-```{r}
-#edge_table %>% 
-#  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #Cros_v3 MsLAMT top hit
-#           str_detect(to,"Mitsp.v1.04-2G008810") | #Cros_v3 SLS top hit
-#         str_detect(from, "Mitsp.v1.04-2G008810") &
-#           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
-```
-
-These two bait genes (MsLAMT and SLS) are chosen based on that they are involved in the same process (Iridoid synthesis). They have a r value of #, which is rather high, considering at FDR < 0.01, r cutoff was # 
 > Skip this until after filtering the edge_table so it doesn't crash
+
 
 You can also look at the distribution of r values. 
 ```{r}
@@ -201,15 +194,15 @@ edge_table %>%
   slice_sample(n = 20000) %>% 
   ggplot(aes(x = r)) +
   geom_histogram(color = "white", bins = 100) +
-  geom_vline(xintercept = 0.7, color = "tomato1", size = 1.2) +
+  geom_vline(xintercept = 0.7, color = "tomato1", linewidth = 1.2) +
   theme_classic() +
   theme(
     text = element_text(size = 14),
     axis.text = element_text(color = "black")
   )
 
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/r_histogram_r7.svg", height = 3.5, width = 5, bg = "white")
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/r_histogram_r7.png", height = 3.5, width = 5, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/r_histogram_r.7.svg", height = 3.5, width = 5, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/r_histogram_r.7.png", height = 3.5, width = 5, bg = "white")
 ```
 
 Cutoff at r = 0.7
@@ -223,20 +216,198 @@ edge_table_select <- edge_table %>%
 
 dim(edge_table_select)
 head(edge_table_select)
+
+saveRDS(edge_table_select, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_edge_table_select_r.7.rds")
 ```
 
-> We are now down to 18,066,222 edges.
+> We are now down to 36,467,739 edges.
 
 ### Check bait genes after filtering for high correlated genes
 ```{r}
+head(Baits)
 edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #Cros_v3 MsLAMT top hit
-           str_detect(to,"Mitsp.v1.04-2G008810") | #Cros_v3 SLS top hit
+  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT top hit Iridoid pathway
+           str_detect(to,"Mitsp.v1.04-2G008810") | #MsSLS top hit
+         str_detect(from, "Mitsp.v1.04-2G008810") &
+           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.10-2G022130") & #MsCO1 MIA pathway
+           str_detect(to,"Mitsp.v1.10-1G021390") | #MsCO2 MIA pathway
+         str_detect(from, "Mitsp.v1.10-1G021390") &
+           str_detect(to,"Mitsp.v1.10-2G022130")  )
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.10-1G021390") & #MsCO2 MIA pathway
+           str_detect(to,"Mitsp.v1.08-2G007110") | #Ms10H
+         str_detect(from, "Mitsp.v1.08-2G007110") &
+           str_detect(to,"Mitsp.v1.10-1G021390")  )
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.10-2G022130") & #MsCO1 MIA pathway
+           str_detect(to,"Mitsp.v1.08-2G007110") | #Ms10H
+         str_detect(from, "Mitsp.v1.08-2G007110") &
+           str_detect(to,"Mitsp.v1.10-2G022130")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.08-2G007110") & #Ms10H MIA pathway
+           str_detect(to,"Mitsp.v1.10-2G012340") | #Red03
+         str_detect(from, "Mitsp.v1.10-2G012340") &
+           str_detect(to,"Mitsp.v1.08-2G007110")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.08-2G007110") & #Ms10H MIA pathway
+           str_detect(to,"Mitsp.v1.10-1G010980") | #DCR
+         str_detect(from, "Mitsp.v1.10-1G010980") &
+           str_detect(to,"Mitsp.v1.08-2G007110")  ) 
+```
+
+
+> Iridoid genes MsLAMT and MsSLS have correlation of r= 0.9185664
+> MsCO1 and MsCO2 MIA genes have correlation of r= 0.9799718
+> MsCO2 and Ms10H do not have correlation at this cutoff
+> MsCO1 and Ms10H do not have correlation at this cutoff
+> Ms10H and Red03 do not have correlation at this cutoff
+> Ms10H and MsDCR do not have correlation at this cutoff
+
+
+### Check bait genes after filtering for high correlated genes
+```{r}
+head(Baits)
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT top hit Iridoid pathway
+           str_detect(to,"Mitsp.v1.04-2G008810") | #MsSLS top hit
+         str_detect(from, "Mitsp.v1.04-2G008810") &
+           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.10-2G022130") & #MsCO1 MIA pathway
+           str_detect(to,"Mitsp.v1.10-1G021390") | #MsCO2 MIA pathway
+         str_detect(from, "Mitsp.v1.10-1G021390") &
+           str_detect(to,"Mitsp.v1.10-2G022130")  )
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.10-1G021390") & #MsCO2 MIA pathway
+           str_detect(to,"Mitsp.v1.08-2G007110") | #Ms10H
+         str_detect(from, "Mitsp.v1.08-2G007110") &
+           str_detect(to,"Mitsp.v1.10-1G021390")  )
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.10-2G022130") & #MsCO1 MIA pathway
+           str_detect(to,"Mitsp.v1.08-2G007110") | #Ms10H
+         str_detect(from, "Mitsp.v1.08-2G007110") &
+           str_detect(to,"Mitsp.v1.10-2G022130")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.08-2G007110") & #Ms10H MIA pathway
+           str_detect(to,"Mitsp.v1.10-2G012340") | #Red03
+         str_detect(from, "Mitsp.v1.10-2G012340") &
+           str_detect(to,"Mitsp.v1.08-2G007110")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.08-2G007110") & #Ms10H MIA pathway
+           str_detect(to,"Mitsp.v1.10-1G010980") | #DCR
+         str_detect(from, "Mitsp.v1.10-1G010980") &
+           str_detect(to,"Mitsp.v1.08-2G007110")  ) 
+
+edge_table_select2 %>% 
+  filter(str_detect(from, "Mitsp.v1.18-2G016770") & #SAS
+           str_detect(to,"Mitsp.v1.10-1G010980") | #DCR
+         str_detect(from, "Mitsp.v1.10-1G010980") &
+           str_detect(to,"Mitsp.v1.18-2G016770")  ) 
+```
+
+> Iridoid genes MsLAMT and MsSLS have correlation of r= 0.9185664
+> MsCO1 and MsCO2 MIA genes have correlation of r= 0.9799718
+> MsCO2 and Ms10H do not have correlation at this cutoff
+> MsCO1 and Ms10H do not have correlation at this cutoff
+> Ms10H and Red03 do not have correlation at this cutoff
+> Ms10H and MsDCR do not have correlation at this cutoff
+
+##### Left off here to consult with Josh ###
+
+### Check bait genes that are more than 1 subsequent step away
+```{r}
+head(Baits)
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT Iridoid pathway
+           str_detect(to,"Mitsp.v1.10-2G022130") | #MsCO1 MIA pathway
+         str_detect(from, "Mitsp.v1.10-2G022130") &
+           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT Iridoid pathway
+           str_detect(to,"Mitsp.v1.08-2G007110") | #Ms10H MIA pathway
+         str_detect(from, "Mitsp.v1.08-2G007110") &
+           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT Iridoid pathway
+           str_detect(to,"Mitsp.v1.10-2G012340") | #Red03 MIA pathway
+         str_detect(from, "Mitsp.v1.10-2G012340") &
+           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
+
+edge_table_select2 %>% 
+  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT Iridoid pathway
+           str_detect(to,"Mitsp.v1.10-1G010980") | #DCR
+         str_detect(from, "Mitsp.v1.10-1G010980") &
+           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT Iridoid pathway
+           str_detect(to,"Mitsp.v1.18-2G016770") | #SAS
+         str_detect(from, "Mitsp.v1.18-2G016770") &
+           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
+
+edge_table_select2 %>% 
+  filter(str_detect(from, "Mitsp.v1.10-2G016180") & #MsDCS1 alkaloid pathway
+           str_detect(to,"Mitsp.v1.18-2G016770") | #SAS
+         str_detect(from, "Mitsp.v1.18-2G016770") &
+           str_detect(to,"Mitsp.v1.10-2G016180")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.10-2G016170") & #MsDCS2 alkaloid pathway
+           str_detect(to,"Mitsp.v1.18-2G016770") | #SAS
+         str_detect(from, "Mitsp.v1.18-2G016770") &
+           str_detect(to,"Mitsp.v1.10-2G016170")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.10-2G016170") & #MsDCS2 alkaloid pathway
+           str_detect(to,"Mitsp.v1.11-1G000250") | #EnolMT
+         str_detect(from, "Mitsp.v1.11-1G000250") &
+           str_detect(to,"Mitsp.v1.10-2G016170")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.11-1G000250") & #EnolMT
+           str_detect(to,"Mitsp.v1.10-2G022130") | #MsCO1 MIA pathway
+         str_detect(from, "Mitsp.v1.10-2G022130") &
+           str_detect(to,"Mitsp.v1.11-1G000250")  )
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.11-1G000250") & #EnolMT
+           str_detect(to,"Mitsp.v1.10-1G021390") | #MsCO2 MIA pathway
+         str_detect(from, "Mitsp.v1.10-1G021390") &
+           str_detect(to,"Mitsp.v1.11-1G000250")  ) 
+
+```
+
+> No correlation between MsLAMT and MsCO1, or Ms10H, or MsRed03, or MsDCR, or MsSAS
+> DCS1 and MsSAS = no correlation - This had correlation in stem!
+> DCS2 and MsSAS = no correlation
+> MsDCS2 and MsEnolMT r = 0.841
+> MsEnolMT and MsCO1 no correlation
+> MsEnolMT and MsCO2 no correlation
+
+### Check Iridoid genes
+```{r}
+head(Baits)
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT top hit Iridoid pathway
+           str_detect(to,"Mitsp.v1.04-2G008810") | #MsSLS top hit
          str_detect(from, "Mitsp.v1.04-2G008810") &
            str_detect(to,"Mitsp.v1.16-1G012780")  ) 
 ```
 
-As expected, these genes have high correlation: r: 0.892707
 
 ## Module detection
 The main goal of a gene co-expression analysis to detect gene co-expression modules, groups of highly co-expressed genes. 
@@ -261,7 +432,7 @@ We need to two things.
 2. Functional annotation, which I [downloaded](http://spuddb.uga.edu/m82_uga_v1_download.shtml ).
 
 ```{r}
-mitr_v1.funct_anno <- read_delim("/scratch/ac05869/nih/coexpression/kratom_stem/Data/mitr_v1.functional_annotation.txt", delim = "\t", col_names = F, col_types = cols())
+mitr_v1.funct_anno <- read_delim("/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.functional_annotation.txt", delim = "\t", col_names = F, col_types = cols())
 mitr_v1.funct_anno$X1 <- gsub(pattern = "_", replacement = "-", mitr_v1.funct_anno$X1)
 mitr_v1.funct_anno$X1 <- gsub("\\.\\d+$", "", mitr_v1.funct_anno$X1)
 
@@ -280,7 +451,7 @@ head(node_table)
 dim(node_table)
 ```
 
-We have 61,644 genes in this network, along with 18,066,222 edges.
+> We have 60851 genes in this network, along with 36,467,739 edges.
 Now let's make the network object. 
 
 ```{r}
@@ -289,25 +460,14 @@ my_network <- graph_from_data_frame(
   vertices = node_table,
   directed = F
 )
+
+saveRDS(my_network, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_network_r.7.rds")
 ```
 
 `graph_from_data_frame()` is a function from the `igraph` package. 
 It takes your edge table and node table and produce a graph (aka network) from it. 
 Note that I selected the `directed = F` argument, because we made our network using correlation.
 Correlation is non-directional, because cor(A,B) = cor(B,A). 
-
-### Graph based clustering
-The next step is detect modules from the graph object. 
-```{r}
-modules <- cluster_leiden(my_network, resolution = 2.5, 
-                          objective_function = "modularity")
-
-```
-
-`cluster_leiden()` runs the Leiden algorithm for you. 
-`resolution_parameter` controls how many clusters you will get. The larger it is, the more clusters. 
-You can play around with the resolution and see what you get. 
-The underlying math of `objective_function` is beyond me, but it specifies how the modules are computed. 
 
 ### What is the optimal resolution for module detection? 
 The optimal resolution for module detection differs between networks. 
@@ -398,7 +558,7 @@ Optimize_num_gene <- optimization_results %>%
   ggplot(aes(x = resolution, y = num_contained_gene)) +
   geom_line(size = 1.1, color = "violetred2") +
   geom_point(size = 3) +
-  geom_vline(xintercept = 2.5, size = 1, linetype = 4) +
+  geom_vline(xintercept = 2, size = 1, linetype = 4) +
   labs(x = "resolution parameter",
        y = "num. genes in\nmodules w/ >=5 genes") +
   theme_classic() +
@@ -409,16 +569,29 @@ Optimize_num_gene <- optimization_results %>%
 
 wrap_plots(Optimize_num_module, Optimize_num_gene, nrow = 2)
 
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/Optimize_resolution.svg", height = 5, width = 3.2, bg ="white")
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/Optimize_resolution.png", height = 5, width = 3.2, bg ="white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Optimize_resolution.svg", height = 5, width = 3.2, bg ="white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Optimize_resolution.png", height = 5, width = 3.2, bg ="white")
 ```
 
-You can see that there is a big jump for num. modules w/ >= 5 genes going from 1.75 to 2 resolution.
-The number of modules stabilizes at resolution >=2.5
+You can see that there is a big jump for num. modules w/ >= 5 genes going from # to # resolution.
+The number of modules stabilizes at resolution >=#
 However, if you look at number of contained genes, the story is a little different. 
 The number of contained genes is very stable until resolution > 2, after which the number of genes continues to diminish. 
 
-> In this case going with res. = 2.5
+> In this case going with res. = 2
+
+### Graph based clustering
+The next step is detect modules from the graph object. 
+```{r}
+modules <- cluster_leiden(my_network, resolution = 2, 
+                          objective_function = "modularity")
+
+```
+
+`cluster_leiden()` runs the Leiden algorithm for you. 
+`resolution_parameter` controls how many clusters you will get. The larger it is, the more clusters. 
+You can play around with the resolution and see what you get. 
+The underlying math of `objective_function` is beyond me, but it specifies how the modules are computed. 
 
 Let's say we move on with module detection using a resolution of # 
 Next, we need to link the module membership to the gene IDs.
@@ -442,9 +615,10 @@ my_network_modules %>%
   filter(n >= 5) %>% 
   ungroup() %>% 
   summarise(sum = sum(n))
+
 ```
 
-Looks like there are ~23 modules that have 5 or more genes, comprising ~61631 genes.
+Looks like there are ~14 modules that have 5 or more genes, comprising ~60839 genes.
 
 Not all genes are contained in modules. They are just lowly connected genes. 
 
@@ -468,15 +642,50 @@ head(my_network_modules)
 We have a bunch of different modules now, how do we know if they make any sense? 
 One way to QC these modules is looking at our bait genes. 
 
+Orthologs of CO1: 
+Mitsp.v1.01-1G019680, Mitsp.v1.01-1G019690, Mitsp.v1.01-1G019700, Mitsp.v1.01-2G001330, Mitsp.v1.01-2G001340, Mitsp.v1.01-2G001350, Mitsp.v1.01-2G019310, Mitsp.v1.01-2G019320, Mitsp.v1.01-2G019330, Mitsp.v1.03-1G014910, Mitsp.v1.03-2G015030, Mitsp.v1.10-1G021390, Mitsp.v1.10-1G021550, Mitsp.v1.10-2G022130, Mitsp.v1.10-2G022370, Mitsp.v1.20-1G017760, Mitsp.v1.20-1G017770, Mitsp.v1.20-2G016840, Mitsp.v1.20-2G016850
 ```{r}
+head(Baits)
 my_network_modules %>% 
-  filter(gene_ID == "Mitsp.v1.16-1G012780" |
-           gene_ID == "Mitsp.v1.04-2G008810")
+  filter(gene_ID == "Mitsp.v1.16-1G012780" | #Iridoid MsLAMT, first switch of clusters from MEP (cluster 19 to 1/11/21)
+           gene_ID == "Mitsp.v1.04-2G008810") #Iridoid MsSLS
+
+(STR_ortho <- my_network_modules %>% 
+  filter(gene_ID == "Mitsp.v1.21-1G011770" |# MsSTR top hit
+           gene_ID =="Mitsp.v1.21_2G011580"))
+
+(CO1_ortho <- my_network_modules %>% 
+  filter(gene_ID == "Mitsp.v1.10-2G022130" | #MIA CO1 top hit
+           gene_ID =="Mitsp.v1.01-1G019680" |
+           gene_ID =="Mitsp.v1.01-1G019690" |
+           gene_ID =="Mitsp.v1.01-1G019700" |
+           gene_ID =="Mitsp.v1.01-2G001330" |
+           gene_ID =="Mitsp.v1.01-2G001340" |
+           gene_ID =="Mitsp.v1.01-2G001350" |
+           gene_ID =="Mitsp.v1.01-2G019310" |
+           gene_ID =="Mitsp.v1.01-2G019320" |
+           gene_ID =="Mitsp.v1.01-2G019330" |
+           gene_ID =="Mitsp.v1.03-1G014910" |
+           gene_ID =="Mitsp.v1.03-2G015030" |
+           gene_ID =="Mitsp.v1.10-1G021390" |
+           gene_ID =="Mitsp.v1.10-1G021550" |
+           gene_ID =="Mitsp.v1.10-2G022370" |
+           gene_ID =="Mitsp.v1.20-1G017760" |
+           gene_ID =="Mitsp.v1.20-1G017770" |
+           gene_ID =="Mitsp.v1.20-2G016840" |
+           gene_ID =="Mitsp.v1.20-2G016850" 
+         ) )
+
+head(CO1_ortho)
 ```
 
-It looks like they are in the same module (21), very good to see. 
-Remember, they are correlated with a r > 0.8; they should be in the same module. 
 
+> It looks like the 2 iridoid genes are in the same module (4), very good to see.
+> STR is in mod 8
+> CO1 modules: 1, 4, 8,10
+
+
+If they are highly correlated, then they are in the same module
 
 ## Module-treatment correspondance
 The next key task is understanding the expression pattern of the clusters. 
@@ -490,7 +699,7 @@ Exp_table_long_averaged_z_modules <- Exp_table_long_averaged_z %>%
 head(Exp_table_long_averaged_z_modules)
 
 write_excel_csv(Exp_table_long_averaged_z_modules, 
-                "/scratch/ac05869/nih/coexpression/kratom_stem/Results/Exp_table_long_averaged_z_modules_r0.7.csv")
+                "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Exp_table_long_averaged_z_modules_r0.7_2res.csv")
 ```
 
 Now we can produce summary statistics for each cluster and look at their expression pattern using mean. 
@@ -506,7 +715,7 @@ head(modules_mean_z)
 Then we look at at which cluster is each module most highly expressed. 
 ```{r}
 module_peak_exp <- modules_mean_z %>% 
-  group_by(module) %>% 
+  group_by(cluster) %>% 
   slice_max(order_by = mean.z, n = 1)
 
 module_peak_exp
@@ -516,8 +725,8 @@ Again, `group_by()` is doing a lot of heavy lifting here.
 ### More module QC
 You can also QC the clusters via a line graph
 > Notes
-* modules 3, 21, 22: Clusters 20, 11, 7 Where the dotplot showed cell specificity for early MIA genes
-* module 21: where our bait genes are. 
+* modules###: Clusters 20, 11, 7 Where the dotplot showed cell specificity for early MIA genes
+* module 4: where iridoid bait genes are. 
 
 ```{r}
 ggplot(Exp_table_long_averaged_z_modules, aes(x=cluster, y=z.score)) +
@@ -538,8 +747,8 @@ ggplot(Exp_table_long_averaged_z_modules, aes(x=cluster, y=z.score)) +
     panel.spacing = unit(1, "line")
   )
 
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/module_line_plots.svg", height = 4, width = 8.2, bg = "white")
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/module_line_plots.png", height = 4, width = 8.2, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_line_plots_2res.svg", height = 4, width = 8.2, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_line_plots_2res.png", height = 4, width = 8.2, bg = "white")
 ```
 
 ### Heat map representation of clusters 
@@ -556,22 +765,22 @@ modules_mean_z$mean.z %>% summary()
 ```
 You can see that the distribution of averaged z scores are more or less symmetrical from the 1st to 3rd quartiles. 
 ```{r}
-quantile(modules_mean_z$mean.z, 0.95)
+quantile(modules_mean_z$mean.z, 0.97)
 ```
-The 95th percentile of averaged z score is #. We can probably roughly clipped the z-scores at # or -#
+The 95th percentile of averaged z score is 1.04 . We can probably roughly clipped the z-scores at # or -#
 
-> 0.85, clipped at 0.9
+> 1.04, clipped at 1.7
 
 ```{r}
 modules_mean_z <- modules_mean_z %>% 
   mutate(mean.z.clipped = case_when(
-    mean.z > 0.9 ~ 0.9,
-    mean.z < -0.9 ~ -0.9,
+    mean.z > 1.7 ~ 1.7,
+    mean.z < -1.7 ~ -1.7,
     T ~ mean.z
   ))
 ```
 
-> This sets z scores > 0.9 or < -0.9 to 0.9 or -0.9, respectively. The rest remain unchanged.  
+> This sets z scores > 1.7 or < -1.7 to 1.7 or -1.7, respectively. The rest remain unchanged.  
 
 #### Reorder rows and columns 
 Let's say we graph modules on y axis, and stage/tissue (cluster) on x-axis.
@@ -579,7 +788,7 @@ Reordering columns are easy, we just do it by hand.
 We already did it before. We can copy and paste that down here. 
 ```{r}
 modules_mean_z2 <- modules_mean_z %>% 
-  mutate(cluster = factor(cluster, levels = c(0:23)
+  mutate(cluster = factor(cluster, levels = c(0:22)
   ))
 head(modules_mean_z2)
 
@@ -589,9 +798,88 @@ head(modules_mean_z2)
 #head(modules_mean_z2)
 ```
 
-Ordering rows is not as straightforward.
-What I usually do is I reorder the rows based on their peak expression.
-We use the `module_peak_exp` table that we already made.
+```{r}
+my_data_peak_values <- modules_mean_z2 %>% 
+  group_by(cluster) %>% #this used to be module
+  slice_max(order_by = mean.z, n = 1, with_ties = T) %>% 
+  rename(peaked_at = cluster) %>% 
+  select(-mean.z)
+
+head(my_data_peak_values)
+
+number_of_peaks <- my_data_peak_values %>% 
+  group_by(peaked_at) %>% 
+  count() %>% 
+  arrange(-n)
+head(number_of_peaks)
+
+my_data_peak_values_reordered <- my_data_peak_values %>% 
+  inner_join(number_of_peaks, by = "peaked_at") %>% 
+  arrange(-n)  
+my_data_peak_values_reordered
+
+my_data_reordered <- modules_mean_z2 %>% 
+  inner_join(number_of_peaks, by = c("cluster" = "peaked_at")) %>% 
+  mutate(cluster = reorder(cluster, -n)) %>%  # this reorders the columns
+  select(-n) %>% 
+  inner_join(my_data_peak_values_reordered, by = "module", multiple = "first") %>% 
+  mutate(peaked_at = reorder(peaked_at, -n)) %>% 
+  mutate(order_rows = as.numeric(peaked_at)) %>% 
+  mutate(module = reorder(module, order_rows)) # this reorders the rows by the "peaked_at" column. 
+head(my_data_reordered)
+
+module_heatmap <- my_data_reordered %>% 
+  ggplot(aes(x = cluster, y = module)) +
+  geom_tile(aes(fill = mean.z.clipped.x), color = "grey80") +
+  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-1.7, 1.7),
+                       breaks = c(-1.7, 0, 1.7), labels = c("< -1.7", "0", "> 1.7")) +
+  labs(fill = "mean.z") +
+  theme_classic() +
+  theme(
+    text = element_text(size = 16),
+    axis.text = element_text(color = "black"),
+    axis.text.x = element_text(color = "black"),
+    strip.text = element_blank(),
+    legend.position = "top",
+    panel.spacing = unit(0.5, "lines") 
+  )
+
+module_heatmap
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap3.svg", height = 4.8, width = 10, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap3.png", height = 4.8, width = 10, bg = "white")
+```
+
+
+
+
+Because we know cluster is the major driver of variance in this dataset, so I only reordered the rows by peak expression across developmental stages, rather than both developmental stages and tissues.
+
+```{r}
+module_heatmap <- modules_mean_z_reorded %>% 
+  ggplot(aes(x = cluster, y = as.factor(module))) +
+  geom_tile(aes(fill = mean.z.clipped), color = "grey80") +
+  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-1.7, 1.7),
+                       breaks = c(-1.7, 0, 1.7), labels = c("< -1.7", "0", "> 1.7")) +
+  labs(x = "Clusters",
+       y = "Module",
+       fill = "z score") +
+  theme_classic() +
+  theme(
+    text = element_text(size = 20),
+    axis.text = element_text(color = "black"),
+    axis.text.x = element_text(color = "black"),
+    strip.text = element_blank(),
+    legend.position = "top",
+    panel.spacing = unit(0.5, "lines") 
+  )
+
+module_heatmap
+
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap.svg", height = 4.8, width = 10, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap.png", height = 4.8, width = 10, bg = "white")
+```
+
+## Alternative way of making heatmap
 
 ```{r}
 my_data_peak_values <- modules_mean_z2 %>% 
@@ -626,8 +914,8 @@ head(my_data_reordered)
 module_heatmap <- my_data_reordered %>% 
   ggplot(aes(x = cluster, y = module)) +
   geom_tile(aes(fill = mean.z.clipped.x), color = "grey80") +
-  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-0.9, 0.9),
-                       breaks = c(-0.9, 0, 0.9), labels = c("< -0.9", "0", "> 0.9")) +
+  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-1.7, 1.7),
+                       breaks = c(-1.7, 0, 1.7), labels = c("< -1.7", "0", "> 1.7")) +
   labs(fill = "mean.z") +
   theme_classic() +
   theme(
@@ -641,76 +929,13 @@ module_heatmap <- my_data_reordered %>%
 
 module_heatmap
 
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/module_heatmap.svg", height = 4.8, width = 10, bg = "white")
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/module_heatmap.png", height = 4.8, width = 10, bg = "white")
+
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap2.svg", height = 4.8, width = 10, bg = "white")
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap2.png", height = 4.8, width = 10, bg = "white")
 ```
 
-##### Still working on heatmap
-
-```{r}
-module_heatmap <- modules_mean_z_reorded %>% 
-  ggplot(aes(x = cluster, y = as.factor(module))) +
-  geom_tile(aes(fill = mean.z.clipped), color = "grey80") +
-  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-0.9, 0.9),
-                       breaks = c(-0.9, 0, 0.9), labels = c("< -0.9", "0", "> 0.9")) +
-  labs(x = "Clusters",
-       y = "Module",
-       fill = "z score") +
-  theme_classic() +
-  theme(
-    text = element_text(size = 20),
-    axis.text = element_text(color = "black"),
-    axis.text.x = element_text(color = "black"),
-    strip.text = element_blank(),
-    legend.position = "top",
-    panel.spacing = unit(0.5, "lines") 
-  )
-
-module_heatmap
-
-```
-
-
-```{r}
-module_peak_exp2 <- module_peak_exp %>% 
-  mutate(order_y = factor(cluster)) %>%  
-  mutate(peak_exp = reorder(cluster, order_y)) 
-
-modules_mean_z_reorded <- modules_mean_z2 %>% 
-  full_join(module_peak_exp2 %>% 
-              select(module, peak_exp, order_y), by = c("module")) %>% 
-  mutate(module = reorder(module, -order_y))
-
-head(modules_mean_z_reorded)
-```
-
-Because we know developmental stage is the major driver of variance in this dataset, so I only reordered the rows by peak expression across developmental stages, rather than both developmental stages and tissues.
-
-```{r}
-module_heatmap <- modules_mean_z_reorded %>% 
-  ggplot(aes(x = cluster, y = as.factor(module))) +
-  geom_tile(aes(fill = mean.z.clipped), color = "grey80") +
-  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-0.9, 0.9),
-                       breaks = c(-0.9, 0, 0.9), labels = c("< -0.9", "0", "> 0.9")) +
-  labs(x = "Clusters",
-       y = "Module",
-       fill = "z score") +
-  theme_classic() +
-  theme(
-    text = element_text(size = 20),
-    axis.text = element_text(color = "black"),
-    axis.text.x = element_text(color = "black"),
-    strip.text = element_blank(),
-    legend.position = "top",
-    panel.spacing = unit(0.5, "lines") 
-  )
-
-module_heatmap
-
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/module_heatmap.svg", height = 4.8, width = 10, bg = "white")
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/module_heatmap.png", height = 4.8, width = 10, bg = "white")
-```
 When the rows and columns are re-ordered, you can trace the signal down the diagonal from upper left to lower right. 
+
 
 ## Gene co-expression graphs 
 A common data visualization for gene co-expression analyses is network graphs. 
@@ -816,8 +1041,8 @@ There are ways to directly filter existing networks, but I always find it more s
     title = element_text(size = 12)
   )
 
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/subnetwork_graph.svg", height = 5, width = 4, bg = "white")
-ggsave("/scratch/ac05869/nih/coexpression/kratom_stem/Results/subnetwork_graph.png", height = 5, width = 4, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_graph.svg", height = 5, width = 4, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Results/subnetwork_graph.png", height = 5, width = 4, bg = "white")
 ```
 
 This could take a while. It is trying to draw many many lines and many dots. 
@@ -918,7 +1143,6 @@ There are many types of TFs. Let's say you are particularly interested in bHLH a
 #ggsave("../Results/Candidate_genes_TPM.svg", height = 4.8, width = 8, bg = "white")
 #ggsave("../Results/Candidate_genes_TPM.png", height = 4.8, width = 8, bg = "white")
 ```
-As expected, they all go up as the fruit ripens. 
 
 ## Write out results
 Finally, I want to write out the neighbors of out bait genes as a table onto the hard drive. 
@@ -931,7 +1155,7 @@ Bait_neighors <- mitr_v1.funct_anno %>%
          annotation = X2)
 
 head(Bait_neighors)
-write_excel_csv(Bait_neighors, "/scratch/ac05869/nih/coexpression/kratom_stem/Results/neighbors_of_LAMT_SLS.csv", col_names = T)
+write_excel_csv(Bait_neighors, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/neighbors_of_LAMT_SLS.csv", col_names = T)
 
 Bait_neighors2 <- mitr_v1.funct_anno %>% 
   filter(X1 %in% names(neighbors_of_DCS1_SAS)) %>% 
@@ -939,10 +1163,10 @@ Bait_neighors2 <- mitr_v1.funct_anno %>%
          annotation = X2)
 
 head(Bait_neighors2)
-write_excel_csv(Bait_neighors2, "c/scratch/ac05869/nih/coexpression/kratom_stem/Results/neighbors_of_DCS1_SAS.csv", col_names = T)
+write_excel_csv(Bait_neighors2, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/neighbors_of_DCS1_SAS.csv", col_names = T)
 
-write_excel_csv(modules_mean_z_reorded, "/scratch/ac05869/nih/coexpression/kratom_stem/Results/modules_mean_z_reordered.csv")
-write_excel_csv(my_network_modules, "/scratch/ac05869/nih/coexpression/kratom_stem/Results/my_network_modules.csv")
+write_excel_csv(modules_mean_z_reorded, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/modules_mean_z_reordered.csv")
+write_excel_csv(my_network_modules, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/my_network_modules.csv")
 ```
 
 

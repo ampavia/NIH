@@ -1,11 +1,10 @@
 ---
-title: "Kratom UGA and MPI combined SC data cluster_annotation"
+title: "Kratom UGA and MPI leaf combined SC data cluster_annotation"
 author: "Anne Pavia"
 date: "2025-02-24"
 output: html_document
 ---
 # Notes:
-I used Josh and Anita's poplar marker data
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -20,7 +19,6 @@ library(RColorBrewer)
 library(rcartocolor)
 library(viridis)
 library(patchwork)
-library(showtext)
 ```
 # Pull Seurat data
 ```{r}
@@ -485,7 +483,7 @@ ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_RayParenchyma_
 ```
 
 ```{r}
-#showtext_auto()
+showtext_auto(enable = F)
 
 
 Marker_dot_wrapped <- Marker_dotplot_nice_df %>%
@@ -640,7 +638,7 @@ RNA_umap <- wrap_plots(UMAP2, leaf_assignment_graph,
            nrow = 2 , heights = c(1, 0.5))
 
 RNA_umap
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation.png", height = 6.25, width = 5, bg = "white")
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation.png", height = 6.25, width = 5, bg = "white")
 #ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation.svg", height = 5, width = 4, bg = "white")
 ```
 
@@ -712,6 +710,91 @@ RNA_umap <- wrap_plots(UMAP2 +
            nrow = 2 , heights = c(1, 0.7))
 
 RNA_umap
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation_vasculature.png", height = 6, width = 4, bg = "white")
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation_vasculature.svg", height = 6, width = 4, bg = "white")
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation_vasculature.png", height = 6, width = 4, bg = "white")
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation_vasculature.svg", height = 6, width = 4, bg = "white")
 ```
+
+
+"0", "3", "6", "7", "13", "14", #M
+    "1","9", "11", "15", 18", #Epi
+    "4", "8", "16", #X
+    "2", "12", "20", #Ph
+    "5", "10", #prolif
+    "19", ##IPAP/MEP+
+    "21", #IPAP
+   "17", 22" #Unknown
+
+
+# Make Plots
+## C. roseus pathway dotplot 
+```{r}
+cros <- read.table("/scratch/ac05869/MIT_KRT_sc_analysis/cros_allwin_in_kratom.txt", header = TRUE, sep = "\t")
+cros$kratom.id <- gsub("\\.\\d+$", "", cros$kratom.id) #remove transcript syntax to match seurat object
+cros$kratom.id <- gsub("_", "-", cros$kratom.id)
+rev_cros <- cros[order(nrow(cros):1),]
+head(rev_cros)
+```
+
+## Make dot plot
+```{r}
+#plot only genes with expression
+dotplot_data <- DotPlot(leaf.combined, features = unique(rev_cros$kratom.id))$data
+
+dotplot <- dotplot_data %>% 
+  inner_join(rev_cros %>% 
+               distinct(kratom.id, .keep_all = T), by = c("features.plot"="kratom.id")) %>%
+  mutate(tag = gene.abbreviation) %>%
+  ggplot(aes(x = id, y = reorder(tag,order, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster") +
+  theme_classic() +
+  theme(legend.position ="top")#,
+        text = element_text(size = 26)
+dotplot
+
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster_KRT_MIT_leaf_whole_pathway_top_hit_28feb25.png", height = 10, width = 10, bg = "white")
+```
+
+```{r}
+Leaf_cell_type_strip <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "" )) +
+  geom_tile(aes(fill = cell_type)) +
+  scale_fill_manual(values = c(brewer.pal(7, "Accent"), "grey80")) +
+  guides(fill = guide_legend(nrow = 3)) +
+  labs(fill = "Cell type") +
+  theme_void() +
+  theme(
+    legend.position = "bottom" ,
+    text = element_text(size = 14)
+  )
+
+Leaf_cell_type_strip
+head(rev_cros)
+
+Leaf_cell_type_mkr_text <- Marker_dotplot_nice_df %>% 
+  dplyr::filter(id == 0) %>% 
+  ggplot(aes(x = "", y = reorder(tag, cell_type3, decreasing = TRUE))) +
+  geom_text(aes(label = unique(gene.abbreviation), fontface = "italic")) +
+  theme_void()
+
+#Leaf_cell_type_mkr_text
+
+blank <- data.frame(
+  x = 0,
+  y = 0
+) %>% 
+  ggplot(aes(x, y)) +
+  theme_void()
+
+Marker_dot_strip <- wrap_plots(dotplot, Leaf_cell_type_strip,
+          heights = c(1, 0.03), 
+          widths = 1, nrow = 2, ncol = 1)
+
+Marker_dot_strip
+
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster2_KRT_MIT_leaf_whole_pathway_top_hit_28feb25.png", height = 10, width = 10, bg = "white")
+```
+
+

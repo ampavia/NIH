@@ -306,8 +306,8 @@ saveRDS(AA, file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AA_seurat_20feb
 
 saveRDS(AB, file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_seurat_20feb25.rds")
 
-#AA <-readRDS(file = "/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/KRT_AA_seurat_14jan25.rds")
-#AB <-readRDS(file = "/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/KRT_AB_seurat_14jan25.rds")
+AA <-readRDS(file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AA_seurat_20feb25.rds")
+AB <-readRDS(file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_seurat_20feb25.rds")
 ```
 
 ## Stat Check
