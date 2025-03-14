@@ -17,8 +17,9 @@ library(patchwork)
 library(RColorBrewer)
 library(viridis)
 library(showtext)
-showtext_auto()
+#showtext_auto()
 set.seed(666)
+options(bitmapType='cairo')
 ```
 
 
@@ -36,9 +37,9 @@ colnames(Exp_table) <- as.factor(c(0:22))
 head(Exp_table)
 dim(Exp_table)
 ```
-
+#GOI
 ```{r}
-Baits <- read_delim("/scratch/ac05869/MIT_KRT_sc_analysis/leaf_baits_26feb25.txt", delim = "\t", col_names = F, col_types = cols())
+Baits <- read_delim("/scratch/ac05869/MIT_KRT_sc_analysis/leaf_baits_orthologs_12mar25.txt", delim = "\t", col_names = F, col_types = cols())
 Baits$X2 <- gsub(pattern = "_", replacement = "-", x = Baits$X2)
 Baits$X2 <- gsub("\\.\\d+$", "", Baits$X2)
 head(Baits)
@@ -218,6 +219,8 @@ dim(edge_table_select)
 head(edge_table_select)
 
 saveRDS(edge_table_select, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_edge_table_select_r.7.rds")
+
+edge_table_select <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_edge_table_select_r.7.rds")
 ```
 
 > We are now down to 36,467,739 edges.
@@ -225,189 +228,84 @@ saveRDS(edge_table_select, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_ou
 ### Check bait genes after filtering for high correlated genes
 ```{r}
 head(Baits)
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT top hit Iridoid pathway
-           str_detect(to,"Mitsp.v1.04-2G008810") | #MsSLS top hit
-         str_detect(from, "Mitsp.v1.04-2G008810") &
-           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
+edge_table_select %>%
+  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT Ortholog
+           str_detect(to,"Mitsp.v1.04-1G008440") | #MsSLS Ortholog
+         str_detect(from, "Mitsp.v1.04-1G008440") &
+           str_detect(to,"Mitsp.v1.16-1G012780")) 
+
+edge_table_select %>%
+  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT orth
+           str_detect(to,"Mitsp.v1.12-1G013480") | #MsSTRtr orth
+         str_detect(from, "Mitsp.v1.12-1G013480") &
+           str_detect(to,"Mitsp.v1.16-1G012780")  )
+
+edge_table_select %>%
+  filter(str_detect(from, "Mitsp.v1.10-1G015530") & #MsDCS1 orth (first alkaloid)
+           str_detect(to,"Mitsp.v1.12-1G013480") | #MsSTRtr orth (last iridoid)
+         str_detect(from, "Mitsp.v1.12-1G013480") &
+           str_detect(to,"Mitsp.v1.10-1G015530"))
+
+edge_table_select %>%
+  filter(str_detect(from, "Mitsp.v1.10-1G015520") & #MsDCS2 orth (first alkaloid)
+           str_detect(to,"Mitsp.v1.12-1G013480") | #MsSTRtr orth (last iridoid)
+         str_detect(from, "Mitsp.v1.12-1G013480") &
+           str_detect(to,"Mitsp.v1.10-1G015520"))
 
 edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.10-2G022130") & #MsCO1 MIA pathway
-           str_detect(to,"Mitsp.v1.10-1G021390") | #MsCO2 MIA pathway
-         str_detect(from, "Mitsp.v1.10-1G021390") &
-           str_detect(to,"Mitsp.v1.10-2G022130")  )
+  filter(str_detect(from, "Mitsp.v1.11-1G000250") & #MsEnolMT MIA pathway
+           str_detect(to,"Mitsp.v1.12-1G013480") | #MsSTRtr orth (last iridoid)
+         str_detect(from, "Mitsp.v1.12-1G013480") &
+           str_detect(to,"Mitsp.v1.11-1G000250")  ) 
 
 edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.10-1G021390") & #MsCO2 MIA pathway
-           str_detect(to,"Mitsp.v1.08-2G007110") | #Ms10H
-         str_detect(from, "Mitsp.v1.08-2G007110") &
-           str_detect(to,"Mitsp.v1.10-1G021390")  )
+  filter(str_detect(from, "Mitsp.v1.11-1G000250") & #MsEnolMT MIA pathway
+           str_detect(to,"Mitsp.v1.16-1G012780") | #MsLAMT orth
+         str_detect(from, "Mitsp.v1.16-1G012780") &
+           str_detect(to,"Mitsp.v1.11-1G000250")  ) 
 
 edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.10-2G022130") & #MsCO1 MIA pathway
-           str_detect(to,"Mitsp.v1.08-2G007110") | #Ms10H
-         str_detect(from, "Mitsp.v1.08-2G007110") &
-           str_detect(to,"Mitsp.v1.10-2G022130")  ) 
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.08-2G007110") & #Ms10H MIA pathway
-           str_detect(to,"Mitsp.v1.10-2G012340") | #Red03
-         str_detect(from, "Mitsp.v1.10-2G012340") &
-           str_detect(to,"Mitsp.v1.08-2G007110")  ) 
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.08-2G007110") & #Ms10H MIA pathway
-           str_detect(to,"Mitsp.v1.10-1G010980") | #DCR
-         str_detect(from, "Mitsp.v1.10-1G010980") &
-           str_detect(to,"Mitsp.v1.08-2G007110")  ) 
-```
-
-
-> Iridoid genes MsLAMT and MsSLS have correlation of r= 0.9185664
-> MsCO1 and MsCO2 MIA genes have correlation of r= 0.9799718
-> MsCO2 and Ms10H do not have correlation at this cutoff
-> MsCO1 and Ms10H do not have correlation at this cutoff
-> Ms10H and Red03 do not have correlation at this cutoff
-> Ms10H and MsDCR do not have correlation at this cutoff
-
-
-### Check bait genes after filtering for high correlated genes
-```{r}
-head(Baits)
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT top hit Iridoid pathway
-           str_detect(to,"Mitsp.v1.04-2G008810") | #MsSLS top hit
-         str_detect(from, "Mitsp.v1.04-2G008810") &
-           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.10-2G022130") & #MsCO1 MIA pathway
-           str_detect(to,"Mitsp.v1.10-1G021390") | #MsCO2 MIA pathway
-         str_detect(from, "Mitsp.v1.10-1G021390") &
-           str_detect(to,"Mitsp.v1.10-2G022130")  )
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.10-1G021390") & #MsCO2 MIA pathway
-           str_detect(to,"Mitsp.v1.08-2G007110") | #Ms10H
-         str_detect(from, "Mitsp.v1.08-2G007110") &
-           str_detect(to,"Mitsp.v1.10-1G021390")  )
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.10-2G022130") & #MsCO1 MIA pathway
-           str_detect(to,"Mitsp.v1.08-2G007110") | #Ms10H
-         str_detect(from, "Mitsp.v1.08-2G007110") &
-           str_detect(to,"Mitsp.v1.10-2G022130")  ) 
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.08-2G007110") & #Ms10H MIA pathway
-           str_detect(to,"Mitsp.v1.10-2G012340") | #Red03
-         str_detect(from, "Mitsp.v1.10-2G012340") &
-           str_detect(to,"Mitsp.v1.08-2G007110")  ) 
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.08-2G007110") & #Ms10H MIA pathway
-           str_detect(to,"Mitsp.v1.10-1G010980") | #DCR
-         str_detect(from, "Mitsp.v1.10-1G010980") &
-           str_detect(to,"Mitsp.v1.08-2G007110")  ) 
-
-edge_table_select2 %>% 
-  filter(str_detect(from, "Mitsp.v1.18-2G016770") & #SAS
-           str_detect(to,"Mitsp.v1.10-1G010980") | #DCR
-         str_detect(from, "Mitsp.v1.10-1G010980") &
-           str_detect(to,"Mitsp.v1.18-2G016770")  ) 
-```
-
-> Iridoid genes MsLAMT and MsSLS have correlation of r= 0.9185664
-> MsCO1 and MsCO2 MIA genes have correlation of r= 0.9799718
-> MsCO2 and Ms10H do not have correlation at this cutoff
-> MsCO1 and Ms10H do not have correlation at this cutoff
-> Ms10H and Red03 do not have correlation at this cutoff
-> Ms10H and MsDCR do not have correlation at this cutoff
-
-##### Left off here to consult with Josh ###
-
-### Check bait genes that are more than 1 subsequent step away
-```{r}
-head(Baits)
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT Iridoid pathway
-           str_detect(to,"Mitsp.v1.10-2G022130") | #MsCO1 MIA pathway
-         str_detect(from, "Mitsp.v1.10-2G022130") &
-           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT Iridoid pathway
-           str_detect(to,"Mitsp.v1.08-2G007110") | #Ms10H MIA pathway
-         str_detect(from, "Mitsp.v1.08-2G007110") &
-           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT Iridoid pathway
-           str_detect(to,"Mitsp.v1.10-2G012340") | #Red03 MIA pathway
-         str_detect(from, "Mitsp.v1.10-2G012340") &
-           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
-
-edge_table_select2 %>% 
-  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT Iridoid pathway
-           str_detect(to,"Mitsp.v1.10-1G010980") | #DCR
-         str_detect(from, "Mitsp.v1.10-1G010980") &
-           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT Iridoid pathway
-           str_detect(to,"Mitsp.v1.18-2G016770") | #SAS
-         str_detect(from, "Mitsp.v1.18-2G016770") &
-           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
-
-edge_table_select2 %>% 
-  filter(str_detect(from, "Mitsp.v1.10-2G016180") & #MsDCS1 alkaloid pathway
-           str_detect(to,"Mitsp.v1.18-2G016770") | #SAS
-         str_detect(from, "Mitsp.v1.18-2G016770") &
-           str_detect(to,"Mitsp.v1.10-2G016180")  ) 
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.10-2G016170") & #MsDCS2 alkaloid pathway
-           str_detect(to,"Mitsp.v1.18-2G016770") | #SAS
-         str_detect(from, "Mitsp.v1.18-2G016770") &
-           str_detect(to,"Mitsp.v1.10-2G016170")  ) 
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.10-2G016170") & #MsDCS2 alkaloid pathway
-           str_detect(to,"Mitsp.v1.11-1G000250") | #EnolMT
-         str_detect(from, "Mitsp.v1.11-1G000250") &
-           str_detect(to,"Mitsp.v1.10-2G016170")  ) 
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.11-1G000250") & #EnolMT
-           str_detect(to,"Mitsp.v1.10-2G022130") | #MsCO1 MIA pathway
-         str_detect(from, "Mitsp.v1.10-2G022130") &
-           str_detect(to,"Mitsp.v1.11-1G000250")  )
-
-edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.11-1G000250") & #EnolMT
-           str_detect(to,"Mitsp.v1.10-1G021390") | #MsCO2 MIA pathway
+  filter(str_detect(from, "Mitsp.v1.11-1G000250") & #MsEnolMT MIA pathway
+           str_detect(to,"Mitsp.v1.10-1G021390") | #MsCO1
          str_detect(from, "Mitsp.v1.10-1G021390") &
            str_detect(to,"Mitsp.v1.11-1G000250")  ) 
 
-```
-
-> No correlation between MsLAMT and MsCO1, or Ms10H, or MsRed03, or MsDCR, or MsSAS
-> DCS1 and MsSAS = no correlation - This had correlation in stem!
-> DCS2 and MsSAS = no correlation
-> MsDCS2 and MsEnolMT r = 0.841
-> MsEnolMT and MsCO1 no correlation
-> MsEnolMT and MsCO2 no correlation
-
-### Check Iridoid genes
-```{r}
-head(Baits)
 edge_table_select %>% 
-  filter(str_detect(from, "Mitsp.v1.16-1G012780") & #MsLAMT top hit Iridoid pathway
-           str_detect(to,"Mitsp.v1.04-2G008810") | #MsSLS top hit
-         str_detect(from, "Mitsp.v1.04-2G008810") &
-           str_detect(to,"Mitsp.v1.16-1G012780")  ) 
+  filter(str_detect(from, "Mitsp.v1.11-1G000250") & #MsEnolMT MIA pathway
+           str_detect(to,"Mitsp.v1.10-1G010920") | #MsDCR
+         str_detect(from, "Mitsp.v1.10-1G010920") &
+           str_detect(to,"Mitsp.v1.11-1G000250"))
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.11-1G000250") & #MsEnolMT MIA pathway
+           str_detect(to,"Mitsp.v1.18-2G016780") | #MsSAS
+         str_detect(from, "Mitsp.v1.18-2G016780") &
+           str_detect(to,"Mitsp.v1.11-1G000250")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.10-1G010920") & #MsDCR
+           str_detect(to,"Mitsp.v1.18-2G016780") | #MsSAS
+         str_detect(from, "Mitsp.v1.18-2G016780") &
+           str_detect(to,"Mitsp.v1.10-1G010920")  ) 
+
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.10-1G010920") & #MsDCR
+           str_detect(to,"Mitsp.v1.10-1G021390") | #MsCO1
+         str_detect(from, "Mitsp.v1.10-1G021390") &
+           str_detect(to,"Mitsp.v1.10-1G010920")  ) 
 ```
 
+
+> Iridoid genes MsLAMT and MsSLS have correlation of r= 0.8130084
+> Iridoid genes MsLAMT and MsSTRtr r=0.7900412
+> STRtr and DCS1/STRtr and DCS2 = no correlation
+> MsEnolMT and STRtr have no corr
+> MsEnolMT and LAMT have corr r=0.8678462	
+> MsEnolMT and MsCO1 have no correlation (for 2 dif orthologs of EnolMT: Mitsp.v1.11-1G000250 & Mitsp.v1.11-1G000230)
+> MsEnolMT and MsDCR have no corr (for 2 dif orthologs of EnolMT: Mitsp.v1.11-1G000250 & Mitsp.v1.11-1G000230)
+> MsEnolMT and MsSAS have no corr (for 2 dif orthologs of EnolMT: Mitsp.v1.11-1G000250 & Mitsp.v1.11-1G000230)
+> MsDCR and MsSAS have corr r=0.8309151
+> MsDCR and MsCO1 have corr r=0.8474654	
 
 ## Module detection
 The main goal of a gene co-expression analysis to detect gene co-expression modules, groups of highly co-expressed genes. 
@@ -462,6 +360,7 @@ my_network <- graph_from_data_frame(
 )
 
 saveRDS(my_network, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_network_r.7.rds")
+#my_network <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_network_r.7.rds")
 ```
 
 `graph_from_data_frame()` is a function from the `igraph` package. 
@@ -576,14 +475,14 @@ ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Optimize_resolution.png",
 You can see that there is a big jump for num. modules w/ >= 5 genes going from # to # resolution.
 The number of modules stabilizes at resolution >=#
 However, if you look at number of contained genes, the story is a little different. 
-The number of contained genes is very stable until resolution > 2, after which the number of genes continues to diminish. 
+The number of contained genes is very stable until resolution > 2.5, after which the number of genes continues to diminish. 
 
-> In this case going with res. = 2
+> In this case going with res. = 3
 
 ### Graph based clustering
 The next step is detect modules from the graph object. 
 ```{r}
-modules <- cluster_leiden(my_network, resolution = 2, 
+modules <- cluster_leiden(my_network, resolution = 3, 
                           objective_function = "modularity")
 
 ```
@@ -618,7 +517,7 @@ my_network_modules %>%
 
 ```
 
-Looks like there are ~14 modules that have 5 or more genes, comprising ~60839 genes.
+Looks like there are ~24 modules that have 5 or more genes, comprising ~60629 genes.
 
 Not all genes are contained in modules. They are just lowly connected genes. 
 
@@ -636,6 +535,9 @@ my_network_modules <- my_network_modules %>%
   filter(module %in% module_5$module)
 
 head(my_network_modules)
+#View(my_network_modules)
+
+saveRDS(my_network_modules, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/my_network_modules_5_genes.rds")
 ```
 
 ### Module quality control
@@ -646,13 +548,13 @@ Orthologs of CO1:
 Mitsp.v1.01-1G019680, Mitsp.v1.01-1G019690, Mitsp.v1.01-1G019700, Mitsp.v1.01-2G001330, Mitsp.v1.01-2G001340, Mitsp.v1.01-2G001350, Mitsp.v1.01-2G019310, Mitsp.v1.01-2G019320, Mitsp.v1.01-2G019330, Mitsp.v1.03-1G014910, Mitsp.v1.03-2G015030, Mitsp.v1.10-1G021390, Mitsp.v1.10-1G021550, Mitsp.v1.10-2G022130, Mitsp.v1.10-2G022370, Mitsp.v1.20-1G017760, Mitsp.v1.20-1G017770, Mitsp.v1.20-2G016840, Mitsp.v1.20-2G016850
 ```{r}
 head(Baits)
-my_network_modules %>% 
-  filter(gene_ID == "Mitsp.v1.16-1G012780" | #Iridoid MsLAMT, first switch of clusters from MEP (cluster 19 to 1/11/21)
-           gene_ID == "Mitsp.v1.04-2G008810") #Iridoid MsSLS
-
-(STR_ortho <- my_network_modules %>% 
-  filter(gene_ID == "Mitsp.v1.21-1G011770" |# MsSTR top hit
-           gene_ID =="Mitsp.v1.21_2G011580"))
+(Iridoids <- my_network_modules %>% 
+  filter(gene_ID == "Mitsp.v1.16-1G012780" | #Iridoid MsLAMT, first switch of clusters from MEP
+           gene_ID == "Mitsp.v1.04-1G008440" | # MsSLS1
+           gene_ID == "Mitsp.v1.07-1G009190" | #SLTr
+           gene_ID == "Mitsp.v1.16-2G020400" | #TDC
+           gene_ID == "Mitsp.v1.21-1G001170" | #STR
+           gene_ID == "Mitsp.v1.12-1G013480")) #STRtr
 
 (CO1_ortho <- my_network_modules %>% 
   filter(gene_ID == "Mitsp.v1.10-2G022130" | #MIA CO1 top hit
@@ -667,7 +569,7 @@ my_network_modules %>%
            gene_ID =="Mitsp.v1.01-2G019330" |
            gene_ID =="Mitsp.v1.03-1G014910" |
            gene_ID =="Mitsp.v1.03-2G015030" |
-           gene_ID =="Mitsp.v1.10-1G021390" |
+           gene_ID =="Mitsp.v1.10-1G021390" | #ortholog used in baits
            gene_ID =="Mitsp.v1.10-1G021550" |
            gene_ID =="Mitsp.v1.10-2G022370" |
            gene_ID =="Mitsp.v1.20-1G017760" |
@@ -676,14 +578,31 @@ my_network_modules %>%
            gene_ID =="Mitsp.v1.20-2G016850" 
          ) )
 
-head(CO1_ortho)
+my_network_modules %>% 
+  filter(gene_ID == "Mitsp.v1.16-1G012780" | ##MsDCR (MIA)
+           gene_ID == "Mitsp.v1.04-1G008440" | ##MsSAS (MIA)
+           gene_ID == "Mitsp.v1.10-1G021390") ##MsCO1 (MIA)
+
 ```
 
+> (Iridoid) STR in mod 9
+> (Iridoid) SLS, SLTr, and TDC in module 11
+> (Iridoid) LAMT and STRtr in mod 7
+> (MIA) MsSAS in module 11 
+> (MIA) DCR in mod 7
+> (MIA) CO1 orthologs are in modules: 4, 10, 20, 11 (top ortholog Mitsp.v1.10-1G021390 in 10)
 
-> It looks like the 2 iridoid genes are in the same module (4), very good to see.
-> STR is in mod 8
-> CO1 modules: 1, 4, 8,10
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.10-1G010920") & #MsDCR
+           str_detect(to,"Mitsp.v1.18-2G016780") | #MsSAS
+         str_detect(from, "Mitsp.v1.18-2G016780") &
+           str_detect(to,"Mitsp.v1.10-1G010920")  ) 
 
+edge_table_select %>% 
+  filter(str_detect(from, "Mitsp.v1.10-1G010920") & #MsDCR
+           str_detect(to,"Mitsp.v1.10-1G021390") | #MsCO1
+         str_detect(from, "Mitsp.v1.10-1G021390") &
+           str_detect(to,"Mitsp.v1.10-1G010920")  ) 
 
 If they are highly correlated, then they are in the same module
 
@@ -697,36 +616,76 @@ Exp_table_long_averaged_z_modules <- Exp_table_long_averaged_z %>%
   inner_join(my_network_modules, by = "gene_ID")
 
 head(Exp_table_long_averaged_z_modules)
+#View(Exp_table_long_averaged_z_modules)
+```
 
-write_excel_csv(Exp_table_long_averaged_z_modules, 
-                "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Exp_table_long_averaged_z_modules_r0.7_2res.csv")
+```{r}
+#Annotate clusters by cell type
+Exp_table_long_averaged_z_modules <- Exp_table_long_averaged_z_modules %>%
+ mutate(cell_type = case_when(
+    cluster == 0 | 
+      cluster == 3 | 
+      cluster == 6 | 
+      cluster == 7 | 
+      cluster == 13 |
+      cluster == 14 ~ "Mesophyll",
+    cluster == 1 | 
+      cluster == 9 |
+      cluster == 11 | 
+      cluster == 15 | 
+      cluster == 18 ~ "Epidermis",
+    cluster == 4 |
+      cluster == 8 |
+      cluster == 16 ~ "Xylem",
+    cluster == 2 |
+      cluster == 12 |
+      cluster == 20 ~ "Phloem",
+    cluster == 5 |
+      cluster == 10 ~ "Proliferating",
+    cluster == 19 ~ "MEP+",
+      cluster == 21 ~ "IPAP",
+    T ~ "Unassigned"))
+    
+Exp_table_long_averaged_z_modules
+
+write_excel_csv(Exp_table_long_averaged_z_modules, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Exp_table_long_averaged_z_modules_r0.7_3res.csv")
 ```
 
 Now we can produce summary statistics for each cluster and look at their expression pattern using mean. 
 ```{r}
 modules_mean_z <- Exp_table_long_averaged_z_modules %>% 
-  group_by(module, cluster) %>% 
+  group_by(module, cluster, cell_type) %>% 
   summarise(mean.z = mean(z.score)) %>% 
   ungroup()
 
 head(modules_mean_z)
+#View(modules_mean_z)
+
+modules_mean_z2 <- Exp_table_long_averaged_z_modules %>% 
+  group_by(cluster, module, cell_type) %>% 
+  summarise(mean.z = mean(z.score)) %>% 
+  ungroup()
+
+head(modules_mean_z2)
+#View(modules_mean_z2)
 ```
 
 Then we look at at which cluster is each module most highly expressed. 
 ```{r}
 module_peak_exp <- modules_mean_z %>% 
   group_by(cluster) %>% 
+  group_by(module) %>% #added this because some modules did not have peak expression when only grouped by cluster
   slice_max(order_by = mean.z, n = 1)
 
 module_peak_exp
+#View(module_peak_exp)
 ```
 Again, `group_by()` is doing a lot of heavy lifting here. 
 
 ### More module QC
 You can also QC the clusters via a line graph
 > Notes
-* modules###: Clusters 20, 11, 7 Where the dotplot showed cell specificity for early MIA genes
-* module 4: where iridoid bait genes are. 
+* module 7: where iridoid bait genes are. 
 
 ```{r}
 ggplot(Exp_table_long_averaged_z_modules, aes(x=cluster, y=z.score)) +
@@ -734,7 +693,7 @@ ggplot(Exp_table_long_averaged_z_modules, aes(x=cluster, y=z.score)) +
   geom_line(
     data = modules_mean_z,
     aes(y = mean.z, group = module), 
-   size = 1.1
+   linewidth = 1.1
   ) +
   labs(x = NULL,
        y = "z score") +
@@ -747,8 +706,8 @@ ggplot(Exp_table_long_averaged_z_modules, aes(x=cluster, y=z.score)) +
     panel.spacing = unit(1, "line")
   )
 
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_line_plots_2res.svg", height = 4, width = 8.2, bg = "white")
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_line_plots_2res.png", height = 4, width = 8.2, bg = "white")
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_line_plots_3res.svg", height = 4, width = 8.2, bg = "white")
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_line_plots_3res.png", height = 4, width = 8.2, bg = "white")
 ```
 
 ### Heat map representation of clusters 
@@ -765,22 +724,22 @@ modules_mean_z$mean.z %>% summary()
 ```
 You can see that the distribution of averaged z scores are more or less symmetrical from the 1st to 3rd quartiles. 
 ```{r}
-quantile(modules_mean_z$mean.z, 0.97)
+quantile(modules_mean_z$mean.z, 0.95)
 ```
-The 95th percentile of averaged z score is 1.04 . We can probably roughly clipped the z-scores at # or -#
+The 95th percentile of averaged z score is 1.31 . We can probably roughly clipped the z-scores at 1.5 or -1.5
 
-> 1.04, clipped at 1.7
+> 1.31, clipped at 1.5
 
 ```{r}
 modules_mean_z <- modules_mean_z %>% 
   mutate(mean.z.clipped = case_when(
-    mean.z > 1.7 ~ 1.7,
-    mean.z < -1.7 ~ -1.7,
+    mean.z > 1.5 ~ 1.5,
+    mean.z < -1.5 ~ -1.5,
     T ~ mean.z
   ))
 ```
 
-> This sets z scores > 1.7 or < -1.7 to 1.7 or -1.7, respectively. The rest remain unchanged.  
+> This sets z scores > 1.5 or < -1.5 to 1.5 or -1.5, respectively. The rest remain unchanged.  
 
 #### Reorder rows and columns 
 Let's say we graph modules on y axis, and stage/tissue (cluster) on x-axis.
@@ -788,22 +747,32 @@ Reordering columns are easy, we just do it by hand.
 We already did it before. We can copy and paste that down here. 
 ```{r}
 modules_mean_z2 <- modules_mean_z %>% 
-  mutate(cluster = factor(cluster, levels = c(0:22)
-  ))
+#  mutate(cluster = factor(cluster, levels = c(0:22))) %>%
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Xylem", "Phloem",
+                              "Proliferating", "MEP+", "IPAP", "Unassigned"
+                            ))) %>% 
+  mutate(cluster = factor(cluster, levels = c(
+    "0", "3", "6", "7", "13", "14", #M
+    "1","9", "11", "15", "18", #Epi
+    "4", "8", "16", #X
+    "2", "12", "20", #Ph
+    "5", "10", #prolif
+    "19", ##Unassigned/MEP+
+    "21", #IPAP
+   "17", "22" #Unknown
+  )))
 head(modules_mean_z2)
-
-#modules_mean_z2 <- modules_mean_z2 %>% 
-#  mutate(order_x = as.numeric(cluster)) %>%  
-#  mutate(cluster = reorder(cluster, order_x)) 
-#head(modules_mean_z2)
 ```
 
 ```{r}
 my_data_peak_values <- modules_mean_z2 %>% 
   group_by(cluster) %>% #this used to be module
-  slice_max(order_by = mean.z, n = 1, with_ties = T) %>% 
+  slice_max(order_by = mean.z, n = 1, with_ties = F) %>% 
   rename(peaked_at = cluster) %>% 
-  select(-mean.z)
+  select(-mean.z, cell_type)
 
 head(my_data_peak_values)
 
@@ -825,14 +794,14 @@ my_data_reordered <- modules_mean_z2 %>%
   inner_join(my_data_peak_values_reordered, by = "module", multiple = "first") %>% 
   mutate(peaked_at = reorder(peaked_at, -n)) %>% 
   mutate(order_rows = as.numeric(peaked_at)) %>% 
-  mutate(module = reorder(module, order_rows)) # this reorders the rows by the "peaked_at" column. 
+  mutate(module = reorder(module, -order_rows)) # this reorders the rows by the "peaked_at" column. 
 head(my_data_reordered)
 
 module_heatmap <- my_data_reordered %>% 
   ggplot(aes(x = cluster, y = module)) +
   geom_tile(aes(fill = mean.z.clipped.x), color = "grey80") +
-  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-1.7, 1.7),
-                       breaks = c(-1.7, 0, 1.7), labels = c("< -1.7", "0", "> 1.7")) +
+  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-1.5, 1.5),
+                       breaks = c(-1.5, 0, 1.5), labels = c("< -1.5", "0", "> 1.5")) +
   labs(fill = "mean.z") +
   theme_classic() +
   theme(
@@ -845,81 +814,50 @@ module_heatmap <- my_data_reordered %>%
   )
 
 module_heatmap
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap3.svg", height = 4.8, width = 10, bg = "white")
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap3.png", height = 4.8, width = 10, bg = "white")
 ```
 
-
-
-
-Because we know cluster is the major driver of variance in this dataset, so I only reordered the rows by peak expression across developmental stages, rather than both developmental stages and tissues.
+This is missing modules that have peek expression in the same cluster
 
 ```{r}
-module_heatmap <- modules_mean_z_reorded %>% 
-  ggplot(aes(x = cluster, y = as.factor(module))) +
-  geom_tile(aes(fill = mean.z.clipped), color = "grey80") +
-  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-1.7, 1.7),
-                       breaks = c(-1.7, 0, 1.7), labels = c("< -1.7", "0", "> 1.7")) +
-  labs(x = "Clusters",
-       y = "Module",
-       fill = "z score") +
-  theme_classic() +
-  theme(
-    text = element_text(size = 20),
-    axis.text = element_text(color = "black"),
-    axis.text.x = element_text(color = "black"),
-    strip.text = element_blank(),
-    legend.position = "top",
-    panel.spacing = unit(0.5, "lines") 
-  )
-
-module_heatmap
-
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap.svg", height = 4.8, width = 10, bg = "white")
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap.png", height = 4.8, width = 10, bg = "white")
-```
-
-## Alternative way of making heatmap
-
-```{r}
-my_data_peak_values <- modules_mean_z2 %>% 
-  group_by(module) %>% 
-  slice_max(order_by = mean.z, n = 1, with_ties = T) %>% 
+my_data_peak_values2 <- modules_mean_z2 %>% 
+  group_by(cluster) %>%
+  group_by(module) %>%
+  slice_max(order_by = mean.z, n = 1, with_ties = F) %>% 
   rename(peaked_at = cluster) %>% 
-  select(-mean.z)
+  select(-mean.z, cell_type)
 
-head(my_data_peak_values)
+head(my_data_peak_values2)
 
-number_of_peaks <- my_data_peak_values %>% 
+number_of_peaks2 <- my_data_peak_values2 %>% 
   group_by(peaked_at) %>% 
   count() %>% 
   arrange(-n)
+head(number_of_peaks2)
 
-my_data_peak_values_reordered <- my_data_peak_values %>% 
-  inner_join(number_of_peaks, by = "peaked_at") %>% 
+my_data_peak_values_reordered2 <- my_data_peak_values2 %>% 
+  inner_join(number_of_peaks2, by = "peaked_at") %>% 
   arrange(-n)  
+my_data_peak_values_reordered2
 
-my_data_peak_values_reordered
-
-my_data_reordered <- modules_mean_z2 %>% 
+my_data_reordered2 <- modules_mean_z2 %>% 
   inner_join(number_of_peaks, by = c("cluster" = "peaked_at")) %>% 
   mutate(cluster = reorder(cluster, -n)) %>%  # this reorders the columns
   select(-n) %>% 
-  inner_join(my_data_peak_values_reordered, by = "module") %>% 
+  inner_join(my_data_peak_values_reordered2, by = "module") %>% 
   mutate(peaked_at = reorder(peaked_at, -n)) %>% 
   mutate(order_rows = as.numeric(peaked_at)) %>% 
-  mutate(module = reorder(module, order_rows)) # this reorders the rows by the "peaked_at" column. 
-head(my_data_reordered)
+  mutate(module = reorder(module, -order_rows)) # this reorders the rows by the "peaked_at" column. 
+head(my_data_reordered2)
 
-module_heatmap <- my_data_reordered %>% 
+module_heatmap2 <- my_data_reordered2 %>% 
   ggplot(aes(x = cluster, y = module)) +
   geom_tile(aes(fill = mean.z.clipped.x), color = "grey80") +
-  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-1.7, 1.7),
-                       breaks = c(-1.7, 0, 1.7), labels = c("< -1.7", "0", "> 1.7")) +
+  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-1.5, 1.5),
+                       breaks = c(-1.5, 0, 1.5), labels = c("< -1.5", "0", "> 1.5")) +
   labs(fill = "mean.z") +
   theme_classic() +
   theme(
-    text = element_text(size = 16),
+    text = element_text(size = 14),
     axis.text = element_text(color = "black"),
     axis.text.x = element_text(color = "black"),
     strip.text = element_blank(),
@@ -927,21 +865,86 @@ module_heatmap <- my_data_reordered %>%
     panel.spacing = unit(0.5, "lines") 
   )
 
-module_heatmap
+module_heatmap2
 
-
-#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap2.svg", height = 4.8, width = 10, bg = "white")
-#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap2.png", height = 4.8, width = 10, bg = "white")
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap2_3res.svg", height = 4.8, width = 10, bg = "white")
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap2_3res.png", height = 4.8, width = 10, bg = "white")
 ```
 
 When the rows and columns are re-ordered, you can trace the signal down the diagonal from upper left to lower right. 
+
+```{r}
+leaf_cell_type_assignment <- data.frame(
+  cluster = c(0:22)
+) %>% 
+  mutate(cell_type = case_when(
+    cluster == 0 | 
+      cluster == 3 | 
+      cluster == 6 | 
+      cluster == 7 | 
+      cluster == 13 |
+      cluster == 14 ~ "Mesophyll",
+    cluster == 1 | 
+      cluster == 9 |
+      cluster == 11 | 
+      cluster == 15 | 
+      cluster == 18 ~ "Epidermis",
+    cluster == 4 |
+      cluster == 8 |
+      cluster == 16 ~ "Xylem",
+    cluster == 2 |
+      cluster == 12 |
+      cluster == 20 ~ "Phloem",
+    cluster == 5 |
+      cluster == 10 ~ "Proliferating",
+    cluster == 19 ~ "MEP+",
+      cluster == 21 ~ "IPAP",
+    T ~ "Unassigned"
+  )) %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Xylem", "Phloem",
+                              "Proliferating", "MEP+", "IPAP", "Unassigned"
+                            ))) %>% 
+  mutate(cluster = factor(cluster, levels = c(
+    "0", "3", "6", "7", "13", "14", #M
+    "1","9", "11", "15", "18", #Epi
+    "4", "8", "16", #X
+    "2", "12", "20", #Ph
+    "5", "10", #prolif
+    "19", ##IPAP/MEP+
+    "21", #IPAP
+   "17", "22" #Unknown
+  )))
+
+Leaf_cell_type_strip <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "" )) +
+  geom_tile(aes(fill = cell_type)) +
+  scale_fill_manual(values = c(brewer.pal(7, "Accent"), "grey80")) +
+  guides(fill = guide_legend(nrow = 2)) +
+  labs(fill = "Cell type") +
+  theme_void() +
+  theme(
+    legend.position = "bottom" ,
+    text = element_text(size = 14)
+  )
+
+Leaf_cell_type_strip
+graph <- wrap_plots(module_heatmap2, Leaf_cell_type_strip,
+                    nrow = 2, heights = c(1, 0.03))
+graph
+
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap2_3res.svg", height = 5.3, width = 10, bg = "white")
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/module_heatmap2_3res.png", height = 5.3, width = 10, bg = "white")
+```
 
 
 ## Gene co-expression graphs 
 A common data visualization for gene co-expression analyses is network graphs. 
 We will be using `ggraph`, a `ggplot` extension of `igraph`. 
 
-Our network has almost 5000 genes and more than 1 million edges. 
+Our network has almost # genes and more than 1 million edges. 
 It's too much to look at if we graph the full network. 
 On the other hand, there is not much to look at anyway for very large networks. 
 You just get messy hairballs. 
@@ -950,21 +953,28 @@ Say we want to look at genes directly co-expressed with our bait genes.
 We can pull out their neighbors using the `neighbors()` function within `igraph()`.
 `igraph` comes with a set of network analysis functions that we can call. 
 
-"Mitsp.v1.16-1G012780" MsLAMT
-"Mitsp.v1.04-2G008810" MsSLS
-"Mitsp.v1.10-2G016180" MsDCS1
-"Mitsp.v1.18-2G016770" MsSAS
+> (Iridoid) STR in mod 9
+> (Iridoid) SLS, SLTr, and TDC in module 11
+> (Iridoid) LAMT and STRtr in mod 7
+> (MIA) MsSAS in module 11 
+> (MIA) DCR in mod 7
+> (MIA) CO1 orthologs are in modules: 4, 10, 20, 11 (top ortholog Mitsp.v1.10-1G021390 in 10)
 
 ```{r}
+head(Baits)
 neighbors_of_bait <- c(
-  neighbors(my_network, v = "Mitsp.v1.16-1G012780"),
-  neighbors(my_network, v = "Mitsp.v1.04-2G008810"),
-  neighbors(my_network, v = "Mitsp.v1.10-2G016180"),
-  neighbors(my_network, v = "Mitsp.v1.18-2G016770")) %>% 
+  neighbors(my_network, v = "Mitsp.v1.18-2G016780"), #MsSAS ortholog
+  neighbors(my_network, v = "Mitsp.v1.10-1G010920"), #MsDCR
+  neighbors(my_network, v = "Mitsp.v1.22-2G007110"), #Ms10H
+  neighbors(my_network, v = "Mitsp.v1.10-1G021390"), #MsCO1
+  neighbors(my_network, v = "Mitsp.v1.11-1G000250"),#MsEnolMT
+  neighbors(my_network, v = "Mitsp.v1.10-1G015530"), #DCS1
+  neighbors(my_network, v = "Mitsp.v1.10-1G015520")) %>% #DCS2
   unique()  
-
 length(neighbors_of_bait)
 ```
+
+>2102 genes
 
 We can make a sub-network object. 
 First we subset edges in the network.
@@ -985,31 +995,39 @@ dim(subnetwork_edges)
 ```
 
 
-> 907 nodes
-> 2437 edges
+> 2092 nodes
+> 5477 edges
 
 We can constrain the edges such that both the start and end of edges are neighbors of baits. 
 I also filtered for highly correlated neighbors (top 5 edges/node based on r value). 
-We still have 5051 edges and 2006 nodes. 
+We still have # edges and # nodes. 
 Note that the most correlated edges for each bait many have overlaps, so the total number of edges remaining will be less than what you think. 
 
 Then we subset nodes in the network. 
 ```{r}
 subnetwork_nodes <- node_table %>% 
+  select(!functional_annotation) %>%
   filter(gene_ID %in% subnetwork_genes) %>% 
   left_join(my_network_modules, by = "gene_ID") %>% 
-  left_join(module_peak_exp, by = "module") %>% 
+  left_join(module_peak_exp, by = "module") %>% #module 1 and 19 have no peak expression
   mutate(module_annotation = case_when(
-    str_detect(module, "3|21|22") ~ "Early MIA",
-    module == "15" ~ "Late MIA",
+    module == "9" ~ "STR",
+    module == "11" ~ "SLS, SLTr, TDC, SAS",
+    module == "7" ~ "LAMT, STRtr, DCR",
+    module == "10" ~ "CO1",
     T ~ "other"
   ))
-
 dim(subnetwork_nodes)
 
 head(subnetwork_nodes)
 ```
 I also append the data from module peak expression and add a new column called "module annotation".
+> (Iridoid) STR in mod 9
+> (Iridoid) SLS, SLTr, and TDC in module 11
+> (Iridoid) LAMT and STRtr in mod 7
+> (MIA) MsSAS in module 11 
+> (MIA) DCR in mod 7
+> (MIA) CO1 orthologs are in modules: 4, 10, 20, 11 (top ortholog Mitsp.v1.10-1G021390 in 10)
 
 Then make sub-network object from subsetted edges and nodes. 
 ```{r}
@@ -1027,8 +1045,7 @@ There are ways to directly filter existing networks, but I always find it more s
   geom_edge_diagonal(color = "grey70", width = 0.5) +
   geom_node_point(color = "white", shape = 21, size = 2,
                   aes(fill = module_annotation)) + 
-  scale_fill_manual(values = c(brewer.pal(8, "Accent")[c(1,3,6)], "grey30"),
-                    limits = c("Early MIA", "Late MIA", "other")) +
+  scale_fill_manual(values = c(brewer.pal(8, "Accent")[c(1,3,6)], "grey30")) +
   labs(fill = "Modules") +
   guides(size = "none",
          fill = guide_legend(override.aes = list(size = 4), 
@@ -1041,8 +1058,8 @@ There are ways to directly filter existing networks, but I always find it more s
     title = element_text(size = 12)
   )
 
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_graph.svg", height = 5, width = 4, bg = "white")
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Results/subnetwork_graph.png", height = 5, width = 4, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_graph_12mar25.svg", height = 5, width = 4, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_graph_12mar25.png", height = 5, width = 4, bg = "white")
 ```
 
 This could take a while. It is trying to draw many many lines and many dots. 
@@ -1051,6 +1068,7 @@ A good advice here is to check different graph layouts.
 The layout of the graphs can have a **huge** impact on the appearance of the network graph. 
 See [igraph layouts](https://igraph.org/r/doc/layout_.html), [ggraph layouts](https://www.data-imaginist.com/2017/ggraph-introduction-layouts/), and [trying different layouts](c) for more information. 
 
+> Left off here 12March24
 
 # Mean separation plots for candidate genes 
 ## Pull out direct neighbors 
