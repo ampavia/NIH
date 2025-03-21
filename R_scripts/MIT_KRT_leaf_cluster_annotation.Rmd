@@ -101,7 +101,8 @@ head(Marker_dotplot_nice_df)
 #View this and compare
 ```
 
-# Specificity of cell type markers
+#QC check of Markers
+## Dotplots to check specificity of cell type markers
 
 ```{r}
 list(cells)
@@ -482,6 +483,7 @@ Marker_dot
 ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_RayParenchyma_markers.png", width = 10, height = 8)
 ```
 
+## Dotplot with all markers
 ```{r}
 showtext_auto(enable = F)
 
@@ -725,9 +727,9 @@ ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_a
 
 
 # Make Plots
-## C. roseus pathway dotplot 
+## Entire pathway dotplot 
 ```{r}
-cros <- read.table("/scratch/ac05869/MIT_KRT_sc_analysis/cros_allwin_in_kratom.txt", header = TRUE, sep = "\t")
+cros <- read.table("~/nih/kratom_pathway_orthologs_20mar25.txt", header = TRUE, sep = "\t")
 cros$kratom.id <- gsub("\\.\\d+$", "", cros$kratom.id) #remove transcript syntax to match seurat object
 cros$kratom.id <- gsub("_", "-", cros$kratom.id)
 rev_cros <- cros[order(nrow(cros):1),]
@@ -753,7 +755,7 @@ dotplot <- dotplot_data %>%
         text = element_text(size = 26)
 dotplot
 
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster_KRT_MIT_leaf_whole_pathway_top_hit_28feb25.png", height = 10, width = 10, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster_KRT_MIT_leaf_whole_pathway_orthologs_20ma25.png", height = 10, width = 10, bg = "white")
 ```
 
 ```{r}
@@ -793,8 +795,8 @@ Marker_dot_strip <- wrap_plots(dotplot, Leaf_cell_type_strip,
 
 Marker_dot_strip
 
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster2_KRT_MIT_leaf_whole_pathway_top_hit_14mar25.png", height = 10, width = 10, bg = "white")
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster2_KRT_MIT_leaf_whole_pathway_top_hit_14mar25.svg", height = 10, width = 10, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster2_KRT_MIT_leaf_whole_pathway_ortholog_14mar25.png", height = 10, width = 10, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster2_KRT_MIT_leaf_whole_pathway_ortholog_14mar25.svg", height = 10, width = 10, bg = "white")
 ```
 
 
