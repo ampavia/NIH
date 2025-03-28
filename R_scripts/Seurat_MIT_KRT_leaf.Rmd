@@ -20,6 +20,7 @@ library(svglite)
 library(patchwork)
 library(cowplot)
 library(ggpubr)
+library(ape)
 library(showtext)
 showtext_auto()
 ```
@@ -193,17 +194,41 @@ leaf.combined <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_data/KRT_M
 ```
 
 # Create Matrices
-## Find Markers 
+## Find Markers for combined dataset
 ```{r}
 DefaultAssay(leaf.combined) <- "RNA"
 
 leaf.combined = JoinLayers(leaf.combined)
+head(leaf.combined)
 
 leaf.combined.markers <- FindAllMarkers(leaf.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+head(leaf.combined.markers)
 
 leaf.combined.markers %>% group_by(cluster)
-write.table(leaf.combined.markers, "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_all_markers_minpct0.25_minlfc0.25_21feb25.txt", quote = FALSE, sep = "\t", row.names = FALSE)
-#write_excel_csv("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_all_markers_minpct0.25_minlfc0.25_21feb25.txt", col_names = T)
+#write.table(leaf.combined.markers, "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_all_markers_minpct0.25_minlfc0.25_21feb25.txt", quote = FALSE, sep = "\t", row.names = FALSE)
+```
+
+#find markers for each leaf source individually
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+leaf.combined.split <- SplitObject(leaf.combined, split.by = "source")
+head(leaf.combined.split)
+head(leaf.combined.split$MPI)#check that it looks the same as when it is together
+
+leaf.combined.split.MPI = JoinLayers(leaf.combined.split$MPI)
+head(leaf.combined.split.MPI)
+
+leaf.combined.split.UGA = JoinLayers(leaf.combined.split$UGA)
+head(leaf.combined.split.UGA)
+
+leaf.combined.markers.MPI <- FindAllMarkers(leaf.combined.split.MPI, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+head(leaf.combined.markers.MPI)
+
+leaf.combined.markers.UGA <- FindAllMarkers(leaf.combined.split.UGA, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+head(leaf.combined.markers.UGA)
+
+leaf.combined.markers.MPI %>% group_by(cluster) %>% write.table("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_MPI_all_markers_minpct0.25_minlfc0.25_28mar25.txt", quote = FALSE, sep = "\t", row.names = FALSE)
+leaf.combined.markers.UGA %>% group_by(cluster) %>% write.table("/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_UGA_all_markers_minpct0.25_minlfc0.25_28mar25.txt", quote = FALSE, sep = "\t", row.names = FALSE)
 ```
 
 ## Find Average Expression
@@ -220,11 +245,123 @@ cluster.averages
 
 # How can I extract expression matrix for all Cluster 0 cells (perhaps, to load into another package)
 cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ])
+head(cluster_avg.data)
 #write.table(cluster_avg.data, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_cluster_avg_normalized_counts_21jan25.txt", sep = "\t", quote = FALSE)
 ```
 
-# Make Plots
+## Find Average Expression for individual UGA and MPI sources
+```{r}
+#MPI leaf only
+DefaultAssay(leaf.combined.split.MPI) <- "RNA"
 
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(leaf.combined.split.MPI)
+Idents(leaf.combined.split.MPI) <- gsub(pattern = " ", replacement = "_", x = Idents(leaf.combined.split.MPI))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(leaf.combined.split.MPI) <- orig.levels
+cluster.averages.MPI <- AverageExpression(leaf.combined.split.MPI, return.seurat = TRUE)
+cluster.averages.MPI
+
+# How can I extract expression matrix for all Cluster 0 cells (perhaps, to load into another package)
+cluster_avg_MPI.data <- as.matrix(GetAssayData(cluster.averages.MPI, layer = "data")[, ])
+write.table(cluster_avg_MPI.data, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_MPI_cluster_avg_normalized_counts_28mar25.txt", sep = "\t", quote = FALSE)
+
+###Now UGA leaf
+DefaultAssay(leaf.combined.split.UGA) <- "RNA"
+
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(leaf.combined.split.UGA)
+Idents(leaf.combined.split.UGA) <- gsub(pattern = " ", replacement = "_", x = Idents(leaf.combined.split.UGA))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(leaf.combined.split.UGA) <- orig.levels
+cluster.averages.UGA <- AverageExpression(leaf.combined.split.UGA, return.seurat = TRUE)
+cluster.averages.UGA
+
+# How can I extract expression matrix for all Cluster 0 cells (perhaps, to load into another package)
+cluster_avg_UGA.data <- as.matrix(GetAssayData(cluster.averages.UGA, layer = "data")[, ])
+head(cluster_avg_UGA.data)
+write.table(cluster_avg_UGA.data, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_UGA_cluster_avg_normalized_counts_28mar25.txt", sep = "\t", quote = FALSE, row.names = T)
+```
+
+#Annotate marker lists
+
+## Read in annotation file and working models gff
+```{r}
+anno <- read.delim(file = "/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.functional_annotation.txt", header = FALSE, sep = "\t", col.names = c("gene", "functional_annotation"))
+#Remove transcript syntax
+anno$gene <- gsub("\\.\\d+$", "", anno$gene)
+head(anno)
+nrow(anno) #172819
+
+##Read in gff file
+
+working_models <- read.gff("/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.working_models.gff3", na.strings = c(".", "?"), GFF3 = TRUE)
+head(working_models)
+#parse apart attributes column
+head(attributes <- working_models$attributes)
+head(parsed_attributes <- strsplit(attributes, ";"))
+extract_attribute_value <- function(attribute_list, key) {
+  key_value <- grep(paste0("^", key, "="), attribute_list, value = TRUE)
+  if (length(key_value) > 0) {
+    return(sub(paste0("^", key, "="), "", key_value))
+  } else {
+    return(NA)
+  }
+}
+working_models$Name <- sapply(parsed_attributes, extract_attribute_value, key = "Name")
+working_models$ID <- sapply(parsed_attributes, extract_attribute_value, key = "ID")
+working_models$Parent <- sapply(parsed_attributes, extract_attribute_value, key = "Parent")
+
+working_models2 <- working_models %>%
+  select(c(ID, seqid, type, start, end, strand)) %>% 
+  filter(type == "gene") %>%
+  rename(chr = seqid) %>%
+  rename(gene = ID)
+head(working_models2)
+dim(working_models2) #103160
+```
+
+## Annotate marker list
+```{r}
+#replace "-" with underscores '_' so that it matches the gff file
+leaf.combined.markers$gene <- gsub(pattern = "-", replacement = "_", leaf.combined.markers$gene)
+head(leaf.combined.markers)
+
+leaf.combined.markers.MPI$gene <- gsub(pattern = "-", replacement = "_", leaf.combined.markers.MPI$gene)
+head(leaf.combined.markers.MPI)
+
+leaf.combined.markers.UGA$gene <- gsub(pattern = "-", replacement = "_", leaf.combined.markers.UGA$gene)
+head(leaf.combined.markers.UGA)
+
+#Need to add chr, pos_left, pos_right, best_arab_hit, best_arab_hit_functional_annotation, CoExpression_Module_Membership, avg_log2FC
+
+#UGA and MPI combined list
+combined_markers_with_gff_anno <- inner_join(leaf.combined.markers, working_models2, by="gene") %>%
+  left_join(anno, by = "gene", multiple = "first") %>%
+  select(cluster, gene, functional_annotation, avg_log2FC, p_val_adj, pct.1, pct.2, chr, start, end, strand)
+dim(combined_markers_with_gff_anno) #30175
+head(combined_markers_with_gff_anno)
+write.table(combined_markers_with_gff_anno, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/annotated_KRT_MIT_clean_integrated_all_markers_minpct0.25_minlfc0.25_28mar25.txt", row.names = FALSE, sep = "\t", quote = FALSE)
+
+#Split MPI markers only
+MPI_markers_with_gff_anno <- inner_join(leaf.combined.markers.MPI, working_models2, by="gene") %>%
+  left_join(anno, by = "gene", multiple = "first") %>%
+  select(cluster, gene, functional_annotation, avg_log2FC, p_val_adj, pct.1, pct.2, chr, start, end, strand)
+dim(MPI_markers_with_gff_anno) #34029
+head(MPI_markers_with_gff_anno)
+write.table(MPI_markers_with_gff_anno, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/annotated_KRT_MIT_clean_integrated_MPI_markers_minpct0.25_minlfc0.25_28mar25.txt", row.names = FALSE, sep = "\t", quote = FALSE)
+
+#Split UGA markers only
+UGA_markers_with_gff_anno <- inner_join(leaf.combined.markers.UGA, working_models2, by="gene") %>%
+  left_join(anno, by = "gene", multiple = "first") %>%
+  select(cluster, gene, functional_annotation, avg_log2FC, p_val_adj, pct.1, pct.2, chr, start, end, strand)
+dim(UGA_markers_with_gff_anno) #34029
+head(UGA_markers_with_gff_anno)
+write.table(UGA_markers_with_gff_anno, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/annotated_KRT_MIT_clean_integrated_UGA_markers_minpct0.25_minlfc0.25_28mar25.txt", row.names = FALSE, sep = "\t", quote = FALSE)
+```
+
+
+# Make Plots
 ## Look at top several pathway genes
 ```{r}
 #Need to create a file that has your marker genes and some metadata (cell types, etc.). Change all underscores to either dashes or periods
