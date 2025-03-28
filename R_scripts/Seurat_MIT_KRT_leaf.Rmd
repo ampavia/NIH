@@ -21,6 +21,7 @@ library(patchwork)
 library(cowplot)
 library(ggpubr)
 library(ape)
+library(igraph)
 library(showtext)
 showtext_auto()
 ```
@@ -253,33 +254,36 @@ head(cluster_avg.data)
 ```{r}
 #MPI leaf only
 DefaultAssay(leaf.combined.split.MPI) <- "RNA"
-
+head(leaf.combined.split.MPI)
 # replace spaces with underscores '_' so ggplot2 doesn't fail
-orig.levels <- levels(leaf.combined.split.MPI)
+(orig.levels <- levels(leaf.combined.split.MPI))
 Idents(leaf.combined.split.MPI) <- gsub(pattern = " ", replacement = "_", x = Idents(leaf.combined.split.MPI))
 orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
 levels(leaf.combined.split.MPI) <- orig.levels
-cluster.averages.MPI <- AverageExpression(leaf.combined.split.MPI, return.seurat = TRUE)
+cluster.averages.MPI <- AverageExpression(leaf.combined.split.MPI, group.by = c("ident", "source"), return.seurat = TRUE)
 cluster.averages.MPI
 
 # How can I extract expression matrix for all Cluster 0 cells (perhaps, to load into another package)
 cluster_avg_MPI.data <- as.matrix(GetAssayData(cluster.averages.MPI, layer = "data")[, ])
-write.table(cluster_avg_MPI.data, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_MPI_cluster_avg_normalized_counts_28mar25.txt", sep = "\t", quote = FALSE)
+head(cluster_avg_MPI.data)
 
 ###Now UGA leaf
 DefaultAssay(leaf.combined.split.UGA) <- "RNA"
-
+head(leaf.combined.split.UGA)
 # replace spaces with underscores '_' so ggplot2 doesn't fail
-orig.levels <- levels(leaf.combined.split.UGA)
+(orig.levels <- levels(leaf.combined.split.UGA))
 Idents(leaf.combined.split.UGA) <- gsub(pattern = " ", replacement = "_", x = Idents(leaf.combined.split.UGA))
 orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
 levels(leaf.combined.split.UGA) <- orig.levels
-cluster.averages.UGA <- AverageExpression(leaf.combined.split.UGA, return.seurat = TRUE)
+cluster.averages.UGA <- AverageExpression(leaf.combined.split.UGA, group.by = c("ident", "source"), return.seurat = TRUE)
 cluster.averages.UGA
 
 # How can I extract expression matrix for all Cluster 0 cells (perhaps, to load into another package)
 cluster_avg_UGA.data <- as.matrix(GetAssayData(cluster.averages.UGA, layer = "data")[, ])
 head(cluster_avg_UGA.data)
+
+#Write tables
+write.table(cluster_avg_MPI.data, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_MPI_cluster_avg_normalized_counts_28mar25.txt", sep = "\t", quote = FALSE, row.names = T)
 write.table(cluster_avg_UGA.data, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/KRT_MIT_clean_integrated_UGA_cluster_avg_normalized_counts_28mar25.txt", sep = "\t", quote = FALSE, row.names = T)
 ```
 
@@ -321,6 +325,9 @@ head(working_models2)
 dim(working_models2) #103160
 ```
 
+
+
+
 ## Annotate marker list
 ```{r}
 #replace "-" with underscores '_' so that it matches the gff file
@@ -359,7 +366,130 @@ dim(UGA_markers_with_gff_anno) #34029
 head(UGA_markers_with_gff_anno)
 write.table(UGA_markers_with_gff_anno, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/annotated_KRT_MIT_clean_integrated_UGA_markers_minpct0.25_minlfc0.25_28mar25.txt", row.names = FALSE, sep = "\t", quote = FALSE)
 ```
+# Annotate with Coexpression data
+## Read in coexpression table of modules
+```{r}
+#GOI
+pathway_genes <- read_delim("/scratch/ac05869/MIT_KRT_sc_analysis/kratom_pathway_orthologs_24mar25.txt", delim = "\t", col_names = T, col_types = cols())
+pathway_genes <- pathway_genes %>%
+  rename(gene = kratom.id)
+head(pathway_genes)
 
+#Module information
+Exp_table_long_averaged_z_modules <- read_delim(file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Exp_table_long_averaged_z_modules_r0.7_3res.csv", delim = ",") %>%
+  select(gene_ID, cluster, avg_exp, z.score, module, cell_type) %>%
+  rename(gene = gene_ID) %>%
+  rename(module_avg_exp = avg_exp)%>%
+  mutate(cluster = as.factor(cluster))
+Exp_table_long_averaged_z_modules$gene <- gsub(pattern = "-", replacement = "_", Exp_table_long_averaged_z_modules$gene)
+head(Exp_table_long_averaged_z_modules)
+
+#Network information
+edge_table_select <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_edge_table_select_r.7.rds")
+#edge_table_select$from <- gsub(pattern = "-", replacement = "_", edge_table_select$from)
+#edge_table_select$from <- gsub(pattern = "-", replacement = "_", edge_table_select$to)
+head(edge_table_select)
+dim(edge_table_select) #36467739
+
+node_table <- data.frame(
+  gene_ID = c(edge_table_select$from, edge_table_select$to) %>% 
+    unique())
+head(node_table)
+dim(node_table) #60851
+  
+my_network <- graph_from_data_frame(
+  edge_table_select,
+  vertices = node_table,
+  directed = F
+)
+
+#head(pathway_genes)
+#baits <- list(pathway_genes$gene)
+#baits
+
+neighbors1 <- neighbors(my_network, v = "Mitsp.v1.18-2G016780")
+length(neighbors1)
+
+neighbors_of_bait <- c(
+  neighbors(my_network, v = "Mitsp.v1.18-2G016780"), #MsSAS 
+  neighbors(my_network, v = "Mitsp.v1.10-1G010920"), #MsDCR1
+  neighbors(my_network, v = "Mitsp.v1.10-2G012340"), #MsDCR2
+  neighbors(my_network, v = "Mitsp.v1.08-2G007110"), #Ms10H
+  neighbors(my_network, v = "Mitsp.v1.10-2G022130"),# ~ "MsCO1.1",
+  neighbors(my_network, v = "Mitsp.v1.10-1G021390"), # ~ "MsCO1.2",
+  neighbors(my_network, v = "Mitsp.v1.10-1G021550"), # ~ "MsCO1.3",
+  neighbors(my_network, v = "Mitsp.v1.10-1G015530"), # ~ "MsDCS1",
+  neighbors(my_network, v = "Mitsp.v1.10-1G015520"), # ~ "MsDCS2",
+  neighbors(my_network, v = "Mitsp.v1.02-1G013220"), # ~ "MsSGD",
+  neighbors(my_network, v = "Mitsp.v1.11-1G000250")) %>% #MsEnolMT
+  unique()
+length(neighbors_of_bait) #6698
+
+subnetwork_edges <- edge_table_select %>% 
+  filter(from %in% names(neighbors_of_bait) &
+           to %in% names(neighbors_of_bait)) %>% 
+  group_by(from) %>% 
+  slice_max(order_by = r, n = 5) %>% 
+  ungroup() %>% 
+  group_by(to) %>% 
+  slice_max(order_by = r, n = 5) %>% 
+  ungroup()
+
+subnetwork_genes <- c(subnetwork_edges$from, subnetwork_edges$to) %>% unique()
+length(subnetwork_genes) #6660
+View(subnetwork_genes)
+dim(subnetwork_edges) #17142
+View(subnetwork_edges)
+
+subnetwork_edges$from <- as.factor(subnetwork_edges$from)
+subnetwork_edges$from <- gsub("-", "_", subnetwork_edges$from)
+subnetwork_edges$to <- gsub("-", "_", subnetwork_edges$to)
+
+subnetwork_neighbors_df <- subnetwork_edges %>%
+  group_by(from) %>%
+  summarise(neighbors = paste(to, collapse = ",")) %>%
+  rename(gene = from)
+  
+head(subnetwork_neighbors_df)
+```
+We can constrain the edges such that both the start and end of edges are neighbors of baits. 
+I also filtered for highly correlated neighbors (top 5 edges/node based on r value). 
+
+```{r}
+#integrated mpi and uga markers
+combined_markers_with_gff_anno_modules <- combined_markers_with_gff_anno %>%
+  group_by(cluster) %>%
+  left_join(Exp_table_long_averaged_z_modules, by = c("gene" = "gene", "cluster" = "cluster")) %>%
+  left_join(pathway_genes, by = "gene") %>%
+  left_join(subnetwork_neighbors_df, by = "gene")
+combined_markers_with_gff_anno_modules
+
+write.table(combined_markers_with_gff_anno, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/annotated_coexpression_KRT_MIT_clean_integrated_all_markers_minpct0.25_minlfc0.25_28mar25.txt", row.names = FALSE, sep = "\t", quote = FALSE)
+
+
+# mpi markers
+MPI_markers_with_gff_anno_modules <- MPI_markers_with_gff_anno %>%
+  group_by(cluster) %>%
+  left_join(Exp_table_long_averaged_z_modules, by = c("gene" = "gene", "cluster" = "cluster")) %>%
+  left_join(pathway_genes, by = "gene")%>%
+  left_join(subnetwork_neighbors_df, by = "gene")
+MPI_markers_with_gff_anno_modules
+
+write.table(MPI_markers_with_gff_anno, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/annotated_coexpression_KRT_MIT_clean_integrated_MPI_markers_minpct0.25_minlfc0.25_28mar25.txt", row.names = FALSE, sep = "\t", quote = FALSE)
+
+
+#uga markers
+UGA_markers_with_gff_anno_modules <- UGA_markers_with_gff_anno %>%
+  group_by(cluster) %>%
+  left_join(Exp_table_long_averaged_z_modules, by = c("gene" = "gene", "cluster" = "cluster")) %>%
+  left_join(pathway_genes, by = "gene")%>%
+  left_join(subnetwork_neighbors_df, by = "gene")
+MPI_markers_with_gff_anno_modules
+
+write.table(UGA_markers_with_gff_anno, file = "/scratch/ac05869/MIT_KRT_sc_analysis/seurat_out/annotated_coexpression_KRT_MIT_clean_integrated_UGA_markers_minpct0.25_minlfc0.25_28mar25.txt", row.names = FALSE, sep = "\t", quote = FALSE)
+
+
+```
 
 # Make Plots
 ## Look at top several pathway genes

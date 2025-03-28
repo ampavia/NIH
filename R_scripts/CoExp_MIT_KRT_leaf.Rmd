@@ -649,7 +649,7 @@ Exp_table_long_averaged_z_modules <- Exp_table_long_averaged_z_modules %>%
     
 Exp_table_long_averaged_z_modules
 
-#write_excel_csv(Exp_table_long_averaged_z_modules, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Exp_table_long_averaged_z_modules_r0.7_3res.csv")
+write_excel_csv(Exp_table_long_averaged_z_modules, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Exp_table_long_averaged_z_modules_r0.7_3res.csv")
 ```
 
 Now we can produce summary statistics for each cluster and look at their expression pattern using mean. 

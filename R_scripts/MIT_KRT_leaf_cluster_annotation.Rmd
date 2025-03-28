@@ -42,7 +42,7 @@ leaf_markers2 <- leaf_markers %>%
   dplyr::filter(is.na(gene_ID) == F)
 head(leaf_markers2)
 
-#Add C. roseus IPAP marker
+#Add C. roseus IPAP marker orthologs in M. speciosa
 leaf_markers2[nrow(leaf_markers2) + 1,] <- as.list(c("7DLH","IPAP_cros", "Mitsp.v1.21-1G007810", "cytochrome P450, family 72, subfamily A, polypeptide", "c.ros leaf"))
 leaf_markers2[nrow(leaf_markers2) + 1,] <- as.list(c("7DLH","IPAP_cros", "Mitsp.v1.21-2G007890", "cytochrome P450, family 72, subfamily A, polypeptide", "c.ros leaf"))
 tail(leaf_markers2)
@@ -547,8 +547,8 @@ levels(leaf.combined) <- c(
     "8", "16", #X
     "2", "12", "20", #Ph
     "5", "10", #prolif
-    "19", ##Mesophyll+MEP
-  "21", #IPAP
+    "19", ##IPAP/MEP+
+  "21", #Iridoid+
    "17", "22" #Unknown
   )
 
@@ -568,8 +568,8 @@ UMAP2
     "8", "16", #X
     "2", "12", "20", #Ph
     "5", "10", #prolif
-    "19", ##Mesophyll+MEP
-    "21", #IPAP
+    "19", ##IPAP/MEP+
+    "21", #Iridoid+
    "17", 22" #Unknown
 
 ```{r}
@@ -596,15 +596,15 @@ leaf_cell_type_assignment <- data.frame(
       cluster == 20 ~ "Phloem",
     cluster == 5 |
       cluster == 10 ~ "Proliferating",
-    cluster == 19 ~ "Mesophyll+MEP",
-      cluster == 21 ~ "IPAP",
+    cluster == 19 ~ "IPAP/MEP+",
+      cluster == 21 ~ "Iridoid+",
     T ~ "Unassigned"
   )) %>% 
   mutate(cell_type = factor(cell_type, 
                             levels = c(
                               "Mesophyll", "Epidermis", "Guard cells",
                               "Xylem", "Phloem",
-                              "Proliferating", "Mesophyll+MEP", "IPAP", "Unassigned"
+                              "Proliferating", "IPAP/MEP+", "Iridoid+", "Unassigned"
                             ))) %>% 
   mutate(cluster = factor(cluster, levels = c(
     "0", "3", "4", "6", "7", "13", "14", #M
@@ -612,8 +612,8 @@ leaf_cell_type_assignment <- data.frame(
     "8", "16", #X
     "2", "12", "20", #Ph
     "5", "10", #prolif
-    "19", ##Mesophyll+MEP
-    "21", #IPAP
+    "19", ##IPAP/MEP+
+    "21", #Iridoid+
    "17", "22" #Unknown
   )))
 ```
@@ -639,7 +639,7 @@ leaf_assignment_graph <- leaf_cell_type_assignment %>%
 RNA_umap <- wrap_plots(UMAP2, leaf_assignment_graph, 
            nrow = 2 , heights = c(1, 0.5))
 
-RNA_umap
+#RNA_umap
 ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation.png", height = 6.25, width = 5, bg = "white")
 ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation.svg", height = 5, width = 4, bg = "white")
 ```
@@ -668,15 +668,15 @@ leaf_cell_type_assignment2 <- data.frame(
       cluster == 20 ~ "Vasculature",
     cluster == 5 |
       cluster == 10 ~ "Proliferating",
-    cluster == 19 ~ "Mesophyll+MEP",
-      cluster == 21 ~ "IPAP",
+    cluster == 19 ~ "IPAP/MEP+",
+      cluster == 21 ~ "Iridoid+",
     T ~ "Unassigned"
   )) %>% 
   mutate(cell_type = factor(cell_type, 
                             levels = c(
                               "Mesophyll", "Epidermis", "Guard cells",
                               "Vasculature",
-                              "Proliferating", "Mesophyll+MEP", "IPAP", "Unassigned"
+                              "Proliferating", "IPAP/MEP+", "Iridoid+", "Unassigned"
                             ))) %>% 
   mutate(cluster = factor(cluster, levels = c(
     "0", "3", "4", "6", "7", "13", "14", #M
@@ -684,8 +684,8 @@ leaf_cell_type_assignment2 <- data.frame(
     "8", "16", #X
     "2", "12", "20", #Ph
     "5", "10", #prolif
-    "19", ##Mesophyll+MEP
-    "21", #IPAP
+    "19", ##IPAP/MEP+
+    "21", #Iridoid+
    "17", "22" #Unknown
   )))
 ```
@@ -710,7 +710,7 @@ leaf_assignment_graph2 <- leaf_cell_type_assignment2 %>%
 RNA_umap <- wrap_plots(UMAP2, leaf_assignment_graph2, 
            nrow = 2 , heights = c(1, 0.5))
 
-RNA_umap
+#RNA_umap
 ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation_vasculature.png", height = 6, width = 4, bg = "white")
 ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_annotation_vasculature.svg", height = 6, width = 4, bg = "white")
 ```
@@ -721,15 +721,15 @@ ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/cluster_anno/KRT_MIT_UMAP_cluster_a
     "8", "16", #X
     "2", "12", "20", #Ph
     "5", "10", #prolif
-    "19", ##Mesophyll+MEP
-    "21", #IPAP
+    "19", ##IPAP/MEP+
+    "21", #Iridoid+
    "17", 22" #Unknown
 
 
 # Make Plots
 ## Entire pathway dotplot 
 ```{r}
-cros <- read.table("~/nih/kratom_pathway_orthologs_20mar25.txt", header = TRUE, sep = "\t")
+cros <- read.table("~/nih/kratom_pathway_orthologs_24mar25.txt", header = TRUE, sep = "\t")
 cros$kratom.id <- gsub("\\.\\d+$", "", cros$kratom.id) #remove transcript syntax to match seurat object
 cros$kratom.id <- gsub("_", "-", cros$kratom.id)
 rev_cros <- cros[order(nrow(cros):1),]
@@ -740,23 +740,26 @@ head(rev_cros)
 ```{r}
 #plot only genes with expression
 dotplot_data <- DotPlot(leaf.combined, features = unique(rev_cros$kratom.id))$data
+head(dotplot_data)
 
 dotplot <- dotplot_data %>% 
   inner_join(rev_cros %>% 
                distinct(kratom.id, .keep_all = T), by = c("features.plot"="kratom.id")) %>%
-  mutate(tag = gene.abbreviation) %>%
-  ggplot(aes(x = id, y = reorder(tag,order, decreasing = TRUE))) +
+  mutate(tag = paste(gene.abbreviation, features.plot)) %>%
+  ggplot(aes(x = id, y = reorder(tag, order, decreasing = TRUE))) +
   geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
   scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
   labs(y = "Genes",
        x = "Cluster") +
   theme_classic() +
-  theme(legend.position ="top")#,
-        text = element_text(size = 26)
+  theme(legend.position ="right")
 dotplot
 
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster_KRT_MIT_leaf_whole_pathway_orthologs_20ma25.png", height = 10, width = 10, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster_KRT_MIT_leaf_whole_pathway_orthologs_24mar25.png", height = 10, width = 10, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster_KRT_MIT_leaf_whole_pathway_orthologs_24mar25.svg", height = 10, width = 10, bg = "white")
+
 ```
+
 
 ```{r}
 Leaf_cell_type_strip <- leaf_cell_type_assignment %>% 
@@ -795,8 +798,8 @@ Marker_dot_strip <- wrap_plots(dotplot, Leaf_cell_type_strip,
 
 Marker_dot_strip
 
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster2_KRT_MIT_leaf_whole_pathway_ortholog_14mar25.png", height = 10, width = 10, bg = "white")
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster2_KRT_MIT_leaf_whole_pathway_ortholog_14mar25.svg", height = 10, width = 10, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster2_KRT_MIT_leaf_whole_pathway_ortholog_24mar25.png", height = 10, width = 10, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/pathway_data/poster2_KRT_MIT_leaf_whole_pathway_ortholog_24mar25.svg", height = 10, width = 10, bg = "white")
 ```
 
 
