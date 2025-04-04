@@ -31,6 +31,7 @@ DefaultAssay(leaf.combined) <- "RNA"
 cluster.averages <- AverageExpression(leaf.combined, return.seurat = TRUE)
 cluster.averages
 cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ]) 
+
 Exp_table <- cluster_avg.data
 colnames(Exp_table) <- as.factor(c(0:22))
 
@@ -345,8 +346,35 @@ We need to two things.
 1. Non-redundant gene IDs from the edge table
 2. Functional annotation, which I [downloaded](http://spuddb.uga.edu/m82_uga_v1_download.shtml ).
 
+#Read in functional annotation
 ```{r}
-mitr_v1.funct_anno <- read_delim("/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.functional_annotation.txt", delim = "\t", col_names = F, col_types = cols())
+mitr_v1.funct_anno <- read_delim("/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.functional_annotation.txt", delim = "\t", col_names = F, col_types = cols()) #Need to keep only representative gene models
+head(mitr_v1.funct_anno)
+
+library(ape)
+repr_working_models <- read.gff("/work/crblab/ac05869/genomes/mitr_v1.working_models.repr.gff3", na.strings = c(".", "?"), GFF3 = TRUE)
+head(repr_working_models)
+#parse apart attributes column
+head(attributes <- repr_working_models$attributes)
+head(parsed_attributes <- strsplit(attributes, ";"))
+extract_attribute_value <- function(attribute_list, key) {
+  key_value <- grep(paste0("^", key, "="), attribute_list, value = TRUE)
+  if (length(key_value) > 0) {
+    return(sub(paste0("^", key, "="), "", key_value))
+  } else {
+    return(NA)
+  }
+}
+repr_working_models$Name <- sapply(parsed_attributes, extract_attribute_value, key = "Name")
+repr_working_models$ID <- sapply(parsed_attributes, extract_attribute_value, key = "ID")
+repr_working_models$Parent <- sapply(parsed_attributes, extract_attribute_value, key = "Parent")
+
+head(repr_working_models)
+mitr_v1.funct_anno <- mitr_v1.funct_anno %>%
+  inner_join(repr_working_models, join_by("X1" == "ID")) %>%
+  select(X1, X2)
+head(mitr_v1.funct_anno)
+
 mitr_v1.funct_anno$X1 <- gsub(pattern = "_", replacement = "-", mitr_v1.funct_anno$X1)
 mitr_v1.funct_anno$X1 <- gsub("\\.\\d+$", "", mitr_v1.funct_anno$X1)
 
@@ -358,11 +386,12 @@ node_table <- data.frame(
   gene_ID = c(edge_table_select$from, edge_table_select$to) %>% 
     unique()
   ) %>% 
-  left_join(mitr_v1.funct_anno, by = c("gene_ID"="X1"), multiple = "first") %>% 
+  left_join(mitr_v1.funct_anno, by = c("gene_ID"="X1")) %>% 
   rename(functional_annotation = X2)
 
 head(node_table)
-dim(node_table)
+dim(node_table) #60851
+saveRDS(node_table, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_node_table_r.7.rds")
 ```
 
 > We have 60851 genes in this network, along with 36,467,739 edges.
@@ -375,8 +404,8 @@ my_network <- graph_from_data_frame(
   directed = F
 )
 
-#saveRDS(my_network, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_network_r.7.rds")
-#my_network <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_network_r.7.rds")
+saveRDS(my_network, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_network_r.7.rds")
+my_network <- readRDS("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/KRT_MIT_leaf_network_r.7.rds")
 ```
 
 `graph_from_data_frame()` is a function from the `igraph` package. 
@@ -563,6 +592,46 @@ my_network_modules <- readRDS(file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp
 ### Module quality control
 We have a bunch of different modules now, how do we know if they make any sense? 
 One way to QC these modules is looking at our bait genes. 
+#Make df to save to hard drive
+```{r}
+#from, to, r, t, p.value, FDR, from func. anno, to func. anno, from module, to module, pathway gene from, pathway gene to, 
+head(edge_table_select)
+head(mitr_v1.funct_anno)
+
+edge_table_select_filtered <- edge_table_select %>%
+  filter(from %in% Baits$kratom.id | to %in% Baits$kratom.id) #%>%
+#  group_by(from) %>%
+#  slice_max(order_by = r, n = 5) %>%
+#  ungroup() %>%
+#  group_by(to) %>%
+#  slice_max(order_by = r, n = 5) %>% 
+#  ungroup()
+dim(edge_table_select_filtered) #25141
+#dim(edge_table_select_r0.7_annotated) #25141 #after merging functional annotation with "from"
+#dim(edge_table_select_r0.7_annotated) #25141 #after merging with second column "to"
+
+edge_table_select_r0.7_annotated <- edge_table_select_filtered %>%
+  left_join(mitr_v1.funct_anno, join_by("from"=="X1"), relationship = "many-to-one", multiple = "first") %>%
+  rename(from_annotation = X2) %>%
+  left_join(Baits, join_by("from"=="kratom.id")) %>%
+  left_join(my_network_modules, join_by("from"=="gene_ID")) %>%
+  rename(from_module = module) %>%
+  rename(from_pathway = gene.abbreviation) %>%
+  select(from, from_annotation, from_module, from_pathway, to, r, t, p.value, FDR) %>%
+  left_join(mitr_v1.funct_anno, join_by("to"=="X1"), relationship = "many-to-one", multiple = "first") %>%
+  rename(to_annotation = X2) %>%
+  left_join(Baits, join_by("to"=="kratom.id")) %>%
+  rename(to_pathway = gene.abbreviation) %>%
+  left_join(my_network_modules, join_by("to"=="gene_ID")) %>%
+  rename(to_module = module) %>%
+  select(from, from_annotation, from_module, from_pathway, to, to_annotation, to_module, to_pathway, r, t, p.value, FDR)
+
+
+write_excel_csv(edge_table_select_r0.7_annotated, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/edge_table_select_r0.7_pathway_genes_1apr25.csv", col_names = T)
+edge_table_select_r0.7_annotated <- read_delim(file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/edge_table_select_r0.7_pathway_genes_1apr25.csv", delim = ",")
+edge_table_select_r0.7_annotated
+```
+
 
 ```{r}
 head(Baits)
@@ -614,9 +683,13 @@ To do that, we append the module membership data back to the long table containi
 
 ```{r}
 Exp_table_long_averaged_z_modules <- Exp_table_long_averaged_z %>% 
-  inner_join(my_network_modules, by = "gene_ID")
-
-head(Exp_table_long_averaged_z_modules)
+  inner_join(my_network_modules, by = "gene_ID") %>%
+  left_join(mitr_v1.funct_anno, join_by(gene_ID == X1)) %>%
+  select(!functional_annotation) %>% #replace the old functional annoattion with the repr gff gene modles
+  rename(functional_annotation = X2)
+  
+head(mitr_v1.funct_anno)
+View(Exp_table_long_averaged_z_modules)
 #View(Exp_table_long_averaged_z_modules)
 ```
 
@@ -649,7 +722,7 @@ Exp_table_long_averaged_z_modules <- Exp_table_long_averaged_z_modules %>%
     
 Exp_table_long_averaged_z_modules
 
-write_excel_csv(Exp_table_long_averaged_z_modules, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Exp_table_long_averaged_z_modules_r0.7_3res.csv")
+#write_excel_csv(Exp_table_long_averaged_z_modules, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Exp_table_long_averaged_z_modules_r0.7_3res.csv")
 ```
 
 Now we can produce summary statistics for each cluster and look at their expression pattern using mean. 
@@ -963,7 +1036,7 @@ neighbors_of_bait <- c(
   neighbors(my_network, v = "Mitsp.v1.18-2G016780"), #MsSAS 
   neighbors(my_network, v = "Mitsp.v1.10-1G010920"), #MsDCR1
   neighbors(my_network, v = "Mitsp.v1.10-2G012340"), #MsDCR2
-  neighbors(my_network, v = "Mitsp.v1.22-2G007110"), #Ms10H
+  neighbors(my_network, v = "Mitsp.v1.08-2G007110"), #Ms10H
   neighbors(my_network, v = "Mitsp.v1.10-2G022130"),# ~ "MsCO1.1",
   neighbors(my_network, v = "Mitsp.v1.10-1G021390"), # ~ "MsCO1.2",
   neighbors(my_network, v = "Mitsp.v1.10-1G021550"), # ~ "MsCO1.3",
@@ -978,7 +1051,7 @@ neighbors_of_bait_0_17 <- c(
   neighbors(my_network, v = "Mitsp.v1.18-2G016780"), #MsSAS 
   neighbors(my_network, v = "Mitsp.v1.10-1G010920"), #MsDCR1
   neighbors(my_network, v = "Mitsp.v1.10-2G012340"), #MsDCR2
-  neighbors(my_network, v = "Mitsp.v1.22-2G007110"), #Ms10H
+  neighbors(my_network, v = "Mitsp.v1.08-2G007110"), #Ms10H
   neighbors(my_network, v = "Mitsp.v1.10-2G022130"),# ~ "MsCO1.1",
   neighbors(my_network, v = "Mitsp.v1.10-1G021390"), # ~ "MsCO1.2",
   neighbors(my_network, v = "Mitsp.v1.10-1G021550")) %>% # ~ "MsCO1.3",
@@ -996,9 +1069,9 @@ length(neighbors_of_bait_0_17)
 length(neighbors_of_bait_21)
 ```
 
->3627 genes
->2874 genes
-> 784 genes
+>6698 genes, neighbors of all bait
+>5923 genes, neighbors of bait in cluster 0 and 17
+> 784 genes, neighbors of bait in cluster 21
 
 We can make a sub-network object. 
 First we subset edges in the network.
@@ -1015,13 +1088,45 @@ subnetwork_edges <- edge_table_select %>%
   ungroup()
 
 subnetwork_genes <- c(subnetwork_edges$from, subnetwork_edges$to) %>% unique()
-length(subnetwork_genes)
-dim(subnetwork_edges)
+length(subnetwork_genes) #6660
+dim(subnetwork_edges) #17142
+```
 
+#Make df to save to hard drive: 
+>from, to, r, t, p.value, FDR, from func. anno, to func. anno, from module, to module, pathway gene from, pathway gene to, 
+
+```{r}
+#Make df to save to hard drive: from, to, r, t, p.value, FDR, from func. anno, to func. anno, from module, to module, pathway gene from, pathway gene to, 
+head(subnetwork_edges)
+dim(subnetwork_edges)#17142
+dim(edges_baits_annotated)#after mergine everything #17142
+
+edges_baits_annotated <- subnetwork_edges %>%
+  left_join(mitr_v1.funct_anno, join_by("from"=="X1"), relationship = "many-to-one", multiple = "first") %>%
+  rename(from_annotation = X2) %>%
+  left_join(Baits, join_by("from"=="kratom.id")) %>%
+  left_join(my_network_modules, join_by("from"=="gene_ID")) %>%
+  rename(from_module = module) %>%
+  rename(from_pathway = gene.abbreviation) %>%
+  select(from, from_annotation, from_module, from_pathway, to, r, t, p.value, FDR) %>%
+  left_join(mitr_v1.funct_anno, join_by("to"=="X1"), relationship = "many-to-one", multiple = "first") %>%
+  rename(to_annotation = X2) %>%
+  left_join(Baits, join_by("to"=="kratom.id")) %>%
+  rename(to_pathway = gene.abbreviation) %>%
+  left_join(my_network_modules, join_by("to"=="gene_ID")) %>%
+  rename(to_module = module) %>%
+  select(from, from_annotation, from_module, from_pathway, to, to_annotation, to_module, to_pathway, r, t, p.value, FDR)
+  
+edges_baits_annotated
+write_excel_csv(edges_baits_annotated, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_all_goi_edge_table_annotated_1apr25.csv", col_names = T)
+```
+
+
+```{r}
 # for genes in clusters 0 and 17 (final stages of pathway)
 subnetwork_edges2 <- edge_table_select %>% 
   filter(from %in% names(neighbors_of_bait_0_17) &
-           to %in% names(neighbors_of_bait_0_17)) %>% 
+           to %in% names(neighbors_of_bait)) %>% 
   group_by(from) %>% 
   slice_max(order_by = r, n = 5) %>% 
   ungroup() %>% 
@@ -1030,13 +1135,43 @@ subnetwork_edges2 <- edge_table_select %>%
   ungroup()
 
 subnetwork_genes2 <- c(subnetwork_edges2$from, subnetwork_edges2$to) %>% unique()
-length(subnetwork_edges2)
-dim(subnetwork_edges2)
+length(subnetwork_genes2) #5905
+dim(subnetwork_edges2) #15207
+```
 
+#Make df to save to hard drive
+```{r}
+#: from, to, r, t, p.value, FDR, from func. anno, to func. anno, from module, to module, pathway gene from, pathway gene to, 
+head(subnetwork_edges2)
+dim(subnetwork_edges2) #15207
+dim(edges_CO1_10H_DCR_SAS_annotated) #15207
+
+edges_CO1_10H_DCR_SAS_annotated <- subnetwork_edges2 %>%
+  left_join(mitr_v1.funct_anno, join_by("from"=="X1"), relationship = "many-to-one", multiple = "first") %>%
+  rename(from_annotation = X2) %>%
+  left_join(Baits, join_by("from"=="kratom.id")) %>%
+  left_join(my_network_modules, join_by("from"=="gene_ID")) %>%
+  rename(from_module = module) %>%
+  rename(from_pathway = gene.abbreviation) %>%
+  select(from, from_annotation, from_module, from_pathway, to, r, t, p.value, FDR) %>%
+  left_join(mitr_v1.funct_anno, join_by("to"=="X1"), relationship = "many-to-one", multiple = "first") %>%
+  rename(to_annotation = X2) %>%
+  left_join(Baits, join_by("to"=="kratom.id")) %>%
+  rename(to_pathway = gene.abbreviation) %>%
+  left_join(my_network_modules, join_by("to"=="gene_ID")) %>%
+  rename(to_module = module) %>%
+  select(from, from_annotation, from_module, from_pathway, to, to_annotation, to_module, to_pathway, r, t, p.value, FDR)
+  
+edges_CO1_10H_DCR_SAS_annotated
+write_excel_csv(edges_CO1_10H_DCR_SAS_annotated, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_CO1_10H_DCR_SAS_edge_table_annotated_1apr25.csv", col_names = T)
+```
+
+
+```{r}
 # for genes in cluster 21 (Iridoid stages)
 subnetwork_edges3 <- edge_table_select %>% 
   filter(from %in% names(neighbors_of_bait_21) &
-           to %in% names(neighbors_of_bait_21)) %>% 
+           to %in% names(neighbors_of_bait)) %>% 
   group_by(from) %>% 
   slice_max(order_by = r, n = 5) %>% 
   ungroup() %>% 
@@ -1045,14 +1180,40 @@ subnetwork_edges3 <- edge_table_select %>%
   ungroup()
 
 subnetwork_genes3 <- c(subnetwork_edges3$from, subnetwork_edges3$to) %>% unique()
-length(subnetwork_edges3)
-dim(subnetwork_edges3)
+length(subnetwork_genes3) #801
+dim(subnetwork_edges3) #1981
+```
+
+#Make df to save to hard drive
+```{r}
+#from, to, r, t, p.value, FDR, from func. anno, to func. anno, from module, to module, pathway gene from, pathway gene to, 
+head(subnetwork_edges3)
+dim(edges_STR_DCS1_DCS2_SGD_EnolMT_annotated) #after merging: 1981
+
+edges_STR_DCS1_DCS2_SGD_EnolMT_annotated <- subnetwork_edges3 %>%
+  left_join(mitr_v1.funct_anno, join_by("from"=="X1"), relationship = "many-to-one", multiple = "first") %>%
+  rename(from_annotation = X2) %>%
+  left_join(Baits, join_by("from"=="kratom.id")) %>%
+  left_join(my_network_modules, join_by("from"=="gene_ID")) %>%
+  rename(from_module = module) %>%
+  rename(from_pathway = gene.abbreviation) %>%
+  select(from, from_annotation, from_module, from_pathway, to, r, t, p.value, FDR) %>%
+  left_join(mitr_v1.funct_anno, join_by("to"=="X1"), relationship = "many-to-one", multiple = "first") %>%
+  rename(to_annotation = X2) %>%
+  left_join(Baits, join_by("to"=="kratom.id")) %>%
+  rename(to_pathway = gene.abbreviation) %>%
+  left_join(my_network_modules, join_by("to"=="gene_ID")) %>%
+  rename(to_module = module) %>%
+  select(from, from_annotation, from_module, from_pathway, to, to_annotation, to_module, to_pathway, r, t, p.value, FDR)
+  
+edges_STR_DCS1_DCS2_SGD_EnolMT_annotated
+write_excel_csv(edges_STR_DCS1_DCS2_SGD_EnolMT_annotated, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_STR_DCS1_DCS2_SGD_EnolMT_edge_table_annotated_1apr25.csv", col_names = T)
 ```
 
 
-> 3604 nodes & 9375 edges
-> 6 nodes & 7491 edges
-> 6 nodes & 1960 edges
+> subnetwork of all baits: 6660 genes, 17142 edges
+> subnetwork all baits in clusters 17 and 0: 5905 genes, 15207 edges
+> subnetwork all baits in cluster 21: 801 genes, 1981 edges
 
 We can constrain the edges such that both the start and end of edges are neighbors of baits. 
 I also filtered for highly correlated neighbors (top 5 edges/node based on r value). 
@@ -1079,9 +1240,11 @@ subnetwork_nodes1 <- node_table %>%
     gene_ID == "Mitsp.v1.02-1G013220" ~ "MsSGD",
     T ~ "other"
   ))
-dim(subnetwork_nodes1)
+dim(subnetwork_nodes1) #6660
+subnetwork_nodes1$module <- as.factor(subnetwork_nodes1$module)
 
-#0 and 17
+
+# cluster 0 and 17
 subnetwork_nodes2 <- node_table %>% 
   select(!functional_annotation) %>%
   filter(gene_ID %in% subnetwork_genes2) %>% 
@@ -1101,7 +1264,8 @@ subnetwork_nodes2 <- node_table %>%
     gene_ID == "Mitsp.v1.02-1G013220" ~ "MsSGD",
     T ~ "other"
   ))
-dim(subnetwork_nodes2)
+dim(subnetwork_nodes2) #5905
+subnetwork_nodes2$module <- as.factor(subnetwork_nodes2$module)
 
 #Cluster 21
 subnetwork_nodes3 <- node_table %>% 
@@ -1123,8 +1287,8 @@ subnetwork_nodes3 <- node_table %>%
     gene_ID == "Mitsp.v1.02-1G013220" ~ "MsSGD",
     T ~ "other"
   ))
-dim(subnetwork_nodes3)
-
+dim(subnetwork_nodes3) #801
+subnetwork_nodes3$module <- as.factor(subnetwork_nodes3$module)
 ```
 I also append the data from module peak expression and add a new column called "bait".
 
@@ -1134,6 +1298,8 @@ Then make sub-network object from subsetted edges and nodes.
 my_subnetwork1 <- graph_from_data_frame(subnetwork_edges,
                                      vertices = subnetwork_nodes1,
                                      directed = F)
+subnetwork_edges
+subnetwork_nodes1
 
 my_subnetwork2 <- graph_from_data_frame(subnetwork_edges2,
                                      vertices = subnetwork_nodes2,
@@ -1144,16 +1310,15 @@ my_subnetwork3 <- graph_from_data_frame(subnetwork_edges3,
                                      directed = F)
 ```
 Use `graph_from_data_frame()` from `igraph` to build the sub-network.
-There are ways to directly filter existing networks, but I always find it more straightforward to build sub-network de novo from filtered edge and node tables.
 
 ```{r}
- my_subnetwork1 %>% 
+my_subnetwork1 %>% 
   ggraph(layout = "stress", circular = F) +
-  geom_edge_diagonal(color = "grey70", width = 0.5) +
+  geom_edge_diagonal(width = 0.5, aes(color = r)) +
   geom_node_point(color = "white", shape = 21, size = 2,
-                  aes(fill = baits, )) + 
+                  aes(fill = baits)) + 
   scale_fill_manual(values = c(brewer.pal(8, "Accent"), "grey30")) +
-  labs(fill = "Bait genes", title = "All GOI nearest 5 neighbors") +
+  labs(fill = "Bait genes") +
   guides(size = "none",
          fill = guide_legend(override.aes = list(size = 4), 
                              title.position = "top", nrow = 2)) +
@@ -1165,12 +1330,35 @@ There are ways to directly filter existing networks, but I always find it more s
     title = element_text(size = 12)
   )
 
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_graph_24mar25.svg", height = 4.5, width = 10, bg = "white")
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_graph_24mar25.png", height = 4.5, width = 10, bg = "white")
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_graph_24mar25.svg", height = 4.5, width = 10, bg = "white")
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_graph_24mar25.png", height = 4.5, width = 10, bg = "white")
 ```
 
 ```{r}
  my_subnetwork2 %>% 
+  ggraph(layout = "stress", circular = F) +
+  geom_edge_diagonal(color = "grey70", width = 0.5) +
+  geom_node_point(color = "white", shape = 21, size = 2,
+                  aes(fill = baits)) + 
+  scale_fill_manual(values = c(brewer.pal(8, "Accent"), "grey30")) +
+  labs(fill = "Bait genes", title = "Cluster 0 and 17 GOI nearest 5 neighbors") +
+  guides(size = "none",
+         fill = guide_legend(override.aes = list(size = 4), 
+                             title.position = "top", nrow = 2)) +
+  theme_void()+
+  theme(
+    text = element_text(size = 14), 
+    legend.position = "bottom",
+    legend.justification = 0.1,
+    title = element_text(size = 12)
+  )
+
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_cluster0_17_graph_24mar25.svg", height = 4.5, width = 10, bg = "white")
+ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_cluster0_17_graph_24mar25.png", height = 4.5, width = 10, bg = "white")
+```
+
+```{r}
+ my_subnetwork3 %>% 
   ggraph(layout = "stress", circular = F) +
   geom_edge_diagonal(color = "grey70", width = 0.5) +
   geom_node_point(color = "white", shape = 21, size = 2,
@@ -1191,29 +1379,6 @@ ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_graph_24mar25.
 ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_cluster21_graph_24mar25.svg", height = 4.5, width = 10, bg = "white")
 ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_cluster21_graph_24mar25.png", height = 4.5, width = 10, bg = "white")
 ```
-
-```{r}
- my_subnetwork3 %>% 
-  ggraph(layout = "stress", circular = F) +
-  geom_edge_diagonal(color = "grey70", width = 0.5) +
-  geom_node_point(color = "white", shape = 21, size = 2,
-                  aes(fill = baits, )) + 
-  scale_fill_manual(values = c(brewer.pal(8, "Accent"), "grey30")) +
-  labs(fill = "Bait genes", title = "Cluster 0 and 17 GOI nearest 5 neighbors") +
-  guides(size = "none",
-         fill = guide_legend(override.aes = list(size = 4), 
-                             title.position = "top", nrow = 2)) +
-  theme_void()+
-  theme(
-    text = element_text(size = 14), 
-    legend.position = "bottom",
-    legend.justification = 0.1,
-    title = element_text(size = 12)
-  )
-
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_cluster0&17_graph_24mar25.svg", height = 4.5, width = 10, bg = "white")
-ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_cluster0&17_graph_24mar25.png", height = 4.5, width = 10, bg = "white")
-```
 This could take a while. It is trying to draw many many lines and many dots. 
 Unsurprisingly, we get a bunch of distinct hairballs. 
 A good advice here is to check different graph layouts. 
@@ -1230,67 +1395,83 @@ We can either look at what other genes are in module #, which both our bait gene
 `igraph` comes with a set of network analysis functions that we can call. 
 
 And we already did that earlier for the sub-network. 
-neighbors_of_bait <- c(
-  neighbors(my_network, v = "Mitsp.v1.18-2G016780"), #MsSAS 
-  neighbors(my_network, v = "Mitsp.v1.10-1G010920"), #MsDCR1
-  neighbors(my_network, v = "Mitsp.v1.10-2G012340"), #MsDCR2
-  neighbors(my_network, v = "Mitsp.v1.22-2G007110"), #Ms10H
-  neighbors(my_network, v = "Mitsp.v1.10-2G022130"),# ~ "MsCO1.1",
-  neighbors(my_network, v = "Mitsp.v1.10-1G021390"), # ~ "MsCO1.2",
-  neighbors(my_network, v = "Mitsp.v1.10-1G021550"), # ~ "MsCO1.3",
-  neighbors(my_network, v = "Mitsp.v1.10-1G015530"), # ~ "MsDCS1",
-  neighbors(my_network, v = "Mitsp.v1.10-1G015520"), # ~ "MsDCS2",
-  neighbors(my_network, v = "Mitsp.v1.02-1G013220"), # ~ "MsSGD",
-  neighbors(my_network, v = "Mitsp.v1.11-1G000250")) %>% #MsEnolMT
-  unique()  
-
-neighbors_of_bait_0_17 <- c(
-  neighbors(my_network, v = "Mitsp.v1.18-2G016780"), #MsSAS 
-  neighbors(my_network, v = "Mitsp.v1.10-1G010920"), #MsDCR1
-  neighbors(my_network, v = "Mitsp.v1.10-2G012340"), #MsDCR2
-  neighbors(my_network, v = "Mitsp.v1.22-2G007110"), #Ms10H
-  neighbors(my_network, v = "Mitsp.v1.10-2G022130"),# ~ "MsCO1.1",
-  neighbors(my_network, v = "Mitsp.v1.10-1G021390"), # ~ "MsCO1.2",
-  neighbors(my_network, v = "Mitsp.v1.10-1G021550")) %>% # ~ "MsCO1.3",
-  unique()
-
-neighbors_of_bait_21 <- c(
-  neighbors(my_network, v = "Mitsp.v1.21-1G011770"), # "STR"
-  neighbors(my_network, v = "Mitsp.v1.10-1G015530"), # ~ "MsDCS1",
-  neighbors(my_network, v = "Mitsp.v1.10-1G015520"), # ~ "MsDCS2",
-  neighbors(my_network, v = "Mitsp.v1.02-1G013220"), # ~ "MsSGD",
-  neighbors(my_network, v = "Mitsp.v1.11-1G000250")) %>% #MsEnolMT
-  unique()  
 
 ```{r}
-neighbors_of_CO1_10H_DCR_SAS <- c(
-  neighbors(my_network, v = "Mitsp.v1.18-2G016780"), #MsSAS 
-  neighbors(my_network, v = "Mitsp.v1.10-1G010920"), #MsDCR1
-  neighbors(my_network, v = "Mitsp.v1.10-2G012340"), #MsDCR2
-  neighbors(my_network, v = "Mitsp.v1.22-2G007110"), #Ms10H
-  neighbors(my_network, v = "Mitsp.v1.10-2G022130"),# ~ "MsCO1.1",
-  neighbors(my_network, v = "Mitsp.v1.10-1G021390"), # ~ "MsCO1.2",
-  neighbors(my_network, v = "Mitsp.v1.10-1G021550")) %>% # ~ "MsCO1.3",
-  unique()
+neighbors_CO1 <- c(
+ neighbors(my_network, v = "Mitsp.v1.10-2G022130"),# ~ "MsCO1.1",
+ neighbors(my_network, v = "Mitsp.v1.10-1G021390"), # ~ "MsCO1.2",
+ neighbors(my_network, v = "Mitsp.v1.10-1G021550")) %>% # ~ "MsCO1.3",
+ unique()
+neighbors_DCR <- c(
+ neighbors(my_network, v = "Mitsp.v1.10-1G010920"), #MsDCR1
+ neighbors(my_network, v = "Mitsp.v1.10-2G012340")) %>%  #MsDCR2
+ unique()
+neighbors_SAS <- neighbors(my_network, v = "Mitsp.v1.18-2G016780") #MsSAS
+shared_neighbors_CO1_DCR_SAS <- node_table %>%
+  filter(gene_ID %in% names(neighbors_CO1) &
+           gene_ID %in% names(neighbors_DCR) &
+           gene_ID %in% names(neighbors_SAS))
+dim(shared_neighbors_CO1_DCR_SAS) #474
 
-length(neighbors_of_CO1_10H_DCR_SAS)
+
+#neighbors_CO1.1 <- neighbors(my_network, v = "Mitsp.v1.10-2G022130")# ~ "MsCO1.1",
+#neighbors_CO1.2 <- neighbors(my_network, v = "Mitsp.v1.10-1G021390")# ~ "MsCO1.2",
+#neighbors_CO1.3 <- neighbors(my_network, v = "Mitsp.v1.10-1G021550")# ~ "MsCO1.3",
+#neighbors_DCR1 <- neighbors(my_network, v = "Mitsp.v1.10-1G010920")#MsDCR1
+#neighbors_DCR2 <- neighbors(my_network, v = "Mitsp.v1.10-2G012340") #MsDCR2
+#neighbors_SAS <- neighbors(my_network, v = "Mitsp.v1.18-2G016780") #MsSAS
+# shared_neighbors_CO1_DCR_SAS <- node_table %>%
+#   filter(gene_ID %in% names(neighbors_CO1.1) &
+#            gene_ID %in% names(neighbors_CO1.2) &
+#            gene_ID %in% names(neighbors_CO1.3) &
+#            gene_ID %in% names(neighbors_DCR1) &
+#            gene_ID %in% names(neighbors_DCR2) &
+#            gene_ID %in% names(neighbors_SAS))
+# dim(shared_neighbors_CO1_DCR_SAS) #245
+shared_neighbors_CO1_DCR_SAS
 ```
-> Cluster 0 and 17 genes: 2874 direct neighbors of CO1, 10H, DCR, and SAS
+> 474 shared neighbors of any CO1, either DCR, and SAS
+> 245 shared neighbors of CO1.1, 2, and 3, DCR1, DCR2, and SAS
+
+## Write out results
+Finally, I want to write out the neighbors of out bait genes as a table onto the hard drive. 
+I want to include correlation data between the GOI
 
 ```{r}
-neighbors_of_STR_DCS_EnolMT <- c(
-  neighbors(my_network, v = "Mitsp.v1.21-1G011770"), # "STR"
-  neighbors(my_network, v = "Mitsp.v1.10-1G015530"), # ~ "MsDCS1",
-  neighbors(my_network, v = "Mitsp.v1.10-1G015520"), # ~ "MsDCS2",
-  neighbors(my_network, v = "Mitsp.v1.11-1G000250")) %>% #MsEnolMT
-  unique()  
+shared_neighbors_CO1_DCR_SAS_from <- edge_table_select_r0.7_annotated %>% 
+  filter(from %in% shared_neighbors_CO1_DCR_SAS$gene_ID) %>%
+  select(!c(to, to_annotation, to_module, p.value, t)) %>%
+  rename(gene_ID = from) %>%
+  rename(annotation = from_annotation) %>%
+  rename(module = from_module) %>%
+  rename(pathway_gene = from_pathway) %>%
+  rename(pathway = to_pathway) %>%
+  filter(!pathway == 'NA')
+dim(shared_neighbors_CO1_DCR_SAS_from) #1287
 
-length(neighbors_of_STR_DCS_EnolMT)
-head(neighbors_of_STR_DCS_EnolMT)
+shared_neighbors_CO1_DCR_SAS_to <- edge_table_select_r0.7_annotated %>% 
+  filter(to %in% shared_neighbors_CO1_DCR_SAS$gene_ID) %>%
+  select(!c(from, from_annotation, from_module, p.value, t)) %>%
+  rename(gene_ID = to) %>%
+  rename(annotation = to_annotation) %>%
+  rename(module = to_module) %>%
+  rename(pathway_gene = to_pathway) %>%
+  rename(pathway = from_pathway)%>%
+  filter(!pathway == 'NA')
+dim(shared_neighbors_CO1_DCR_SAS_to) #1287
 
+shared_neighbors_CO1_DCR_SAS_annotated <- rbind(shared_neighbors_CO1_DCR_SAS_to, shared_neighbors_CO1_DCR_SAS_from) %>%
+  pivot_wider(names_from = pathway, values_from = c(r, FDR))
+dim(shared_neighbors_CO1_DCR_SAS_annotated) #474
+View(shared_neighbors_CO1_DCR_SAS_annotated)
+
+write_excel_csv(shared_neighbors_CO1_DCR_SAS_annotated, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/shared_neighbors_CO1_DCR_SAS_annotated.csv", delim = ",", col_names = T)
+#shared_neighbors_CO1_DCR_SAS_annotated <- read_delim("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/shared_neighbors_CO1_DCR_SAS_annotated.csv", delim = ",")
+#shared_neighbors_CO1_DCR_SAS_annotated
+
+#write_excel_csv(modules_mean_z_reorded, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/modules_mean_z_reordered.csv")
+#write_excel_csv(my_network_modules, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/my_network_modules.csv")
 ```
-
-> Cluster 21 genes: 228 direct neighbors of STR, DCS1, DCS2, and EnolMT
 
 Let's say you are interested in transcription factors (TFs). 
 There are many types of TFs. Let's say you are particularly interested in bHLH and GRAS type TFs. 
@@ -1348,30 +1529,6 @@ There are many types of TFs. Let's say you are particularly interested in bHLH a
 #ggsave("../Results/Candidate_genes_TPM.png", height = 4.8, width = 8, bg = "white")
 ```
 
-## Write out results
-Finally, I want to write out the neighbors of out bait genes as a table onto the hard drive. 
-That's easy. 
-
-```{r}
-Bait_neighors <- mitr_v1.funct_anno %>% 
-  filter(X1 %in% names(neighbors_of_CO1_10H_DCR_SAS)) %>% 
-  rename(Gene_ID = X1,
-         annotation = X2)
-
-head(Bait_neighors)
-write_excel_csv(Bait_neighors, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/neighbors_of_CO1_10H_DCR_SAS.csv", col_names = T)
-
-Bait_neighors2 <- mitr_v1.funct_anno %>% 
-  filter(X1 %in% names(neighbors_of_STR_DCS_EnolMT)) %>% 
-  rename(Gene_ID = X1,
-         annotation = X2)
-
-head(Bait_neighors2)
-write_excel_csv(Bait_neighors2, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/neighbors_of_STR_DCS_EnolMT.csv", col_names = T)
-
-write_excel_csv(modules_mean_z_reorded, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/modules_mean_z_reordered.csv")
-write_excel_csv(my_network_modules, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/my_network_modules.csv")
-```
 
 
 # Conclusions
@@ -1414,8 +1571,7 @@ dim(module_11_subnetwork_genes)
 
 subnetwork_module_11_nodes <- node_table %>% 
   filter(gene_ID %in% module_11_subnetwork_genes) %>% 
-  filter(duplicated(gene_ID) == FALSE) %>%
-  ))
+  filter(duplicated(gene_ID) == FALSE)
 
 length(subnetwork_module_11_nodes$gene_ID) #2083
 
@@ -1423,6 +1579,31 @@ length(subnetwork_module_11_nodes$gene_ID) #2083
 subnetwork_module_11 <- graph_from_data_frame(subnetwork_module_11_edges,
                                      vertices = subnetwork_module_11_nodes,
                                      directed = F) #correlation is non-directional because cor(A,B) = cor(B,A)
+```
+
+#Make df to save to hard drive
+```{r}
+#from, to, r, t, p.value, FDR, from func. anno, to func. anno, from module, to module, pathway gene from, pathway gene to, 
+head(subnetwork_module_11_edges)
+head(mitr_v1.funct_anno)
+edges_module_11_annotated <- subnetwork_module_11_edges %>%
+  left_join(mitr_v1.funct_anno, join_by("from"=="X1")) %>%
+  rename(from_annotation = X2) %>%
+  left_join(Baits, join_by("from"=="kratom.id")) %>%
+  left_join(my_network_modules, join_by("from"=="gene_ID")) %>%
+  rename(from_module = module) %>%
+  rename(from_pathway = gene.abbreviation) %>%
+  select(from, from_annotation, from_module, from_pathway, to, r, t, p.value, FDR) %>%
+  left_join(mitr_v1.funct_anno, join_by("to"=="X1")) %>%
+  rename(to_annotation = X2) %>%
+  left_join(Baits, join_by("to"=="kratom.id")) %>%
+  rename(to_pathway = gene.abbreviation) %>%
+  left_join(my_network_modules, join_by("to"=="gene_ID")) %>%
+  rename(to_module = module) %>%
+  select(from, from_annotation, from_module, from_pathway, to, to_annotation, to_module, to_pathway, r, t, p.value, FDR)
+  
+edges_module_11_annotated
+write_excel_csv(edges_module_11_annotated, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_module_11_edge_table_annotated_31mar25.csv", col_names = T)
 ```
 
 
@@ -1892,7 +2073,7 @@ ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/submodules_module11_heatm
 ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/submodules_module11_heatmap_1.25res.png", height = 5.3, width = 10, bg = "white")
 ```
 
-# Make submodules of module 10
+# Make subnetwork of module 10
 
 > We are interested in module 10, which is where late stage GOI are (cluster 17 and 0)
 
@@ -1943,12 +2124,35 @@ subnetwork_module_10_nodes <- node_table %>%
     T ~ "other"
   ))
 
-length(subnetwork_module_10_nodes$gene_ID) #3540
-
 #make a network object from all of the genes within module11   
 subnetwork_module_10 <- graph_from_data_frame(subnetwork_module_10_edges,
                                      vertices = subnetwork_module_10_nodes,
                                      directed = F) #correlation is non-directional because cor(A,B) = cor(B,A)
+```
+
+#Make df to save to hard drive
+```{r}
+#from, to, r, t, p.value, FDR, from func. anno, to func. anno, from module, to module, pathway gene from, pathway gene to, 
+head(subnetwork_module_10_edges)
+head(mitr_v1.funct_anno)
+edges_module_10_annotated <- subnetwork_module_10_edges %>%
+  left_join(mitr_v1.funct_anno, join_by("from"=="X1")) %>%
+  rename(from_annotation = X2) %>%
+  left_join(Baits, join_by("from"=="kratom.id")) %>%
+  left_join(my_network_modules, join_by("from"=="gene_ID")) %>%
+  rename(from_module = module) %>%
+  rename(from_pathway = gene.abbreviation) %>%
+  select(from, from_annotation, from_module, from_pathway, to, r, t, p.value, FDR) %>%
+  left_join(mitr_v1.funct_anno, join_by("to"=="X1")) %>%
+  rename(to_annotation = X2) %>%
+  left_join(Baits, join_by("to"=="kratom.id")) %>%
+  rename(to_pathway = gene.abbreviation) %>%
+  left_join(my_network_modules, join_by("to"=="gene_ID")) %>%
+  rename(to_module = module) %>%
+  select(from, from_annotation, from_module, from_pathway, to, to_annotation, to_module, to_pathway, r, t, p.value, FDR)
+  
+edges_module_10_annotated
+write_excel_csv(edges_module_10_annotated, file = "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/subnetwork_module_10_edge_table_annotated_31mar25.csv", col_names = T)
 ```
 
 
