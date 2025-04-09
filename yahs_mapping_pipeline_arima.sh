@@ -2,19 +2,19 @@
 #SBATCH --job-name=arima_mapping3	                    # Job name
 #SBATCH --partition=highmem_p		                        # Partition (queue) name
 #SBATCH --ntasks=1			                            # Single task job
-#SBATCH --cpus-per-task=64		                        # Number of cores per task - match this to the num_threads used by BLAST
-#SBATCH --mem=100gb			                            # Total memory for job
+#SBATCH --cpus-per-task=32		                        # Number of cores per task - match this to the num_threads used by BLAST
+#SBATCH --mem=250gb			                            # Total memory for job
 #SBATCH --time=72:00:00  		                        # Time limit hrs:min:sec
 #SBATCH --output=/scratch/ac05869/err_out/%x_%j.out	# Location of standard output and error log files (replace cbergman with your myid)
 #SBATCH --error=/scratch/ac05869/err_out/%x_%j.err		# Standard error log, e.g., testBowtie2_12345.err
 #SBATCH --mail-user=ac05869@uga.edu                    # Where to send mail (replace cbergman with your myid)
-#SBATCH --mail-type=END,FAIL                            # Mail events (BEGIN, END, FAIL, ALL)
+#SBATCH --mail-type=START,END,FAIL                            # Mail events (BEGIN, END, FAIL, ALL)
 
 #####
 #The mapping pipeline will output a single binary alignment map file (BAM file) that contains paired and
 #filtered Hi-C paired-end reads mapped to reference sequences. Workflow taken from Arima mapping pipeline
 #####
-CPU=64
+CPU=32
 HIC='gel-an_1438201_S3HiC'
 IN_DIR='/scratch/ac05869/gelsemium_yahs/gel-an_1438200'
 REF='/scratch/ac05869/gelsemium_yahs/gese_v1.asm.fa'
@@ -28,7 +28,7 @@ COMBINER='/home/ac05869/NIH/two_read_bam_combiner.pl'
 STATS='/home/ac05869/NIH/get_stats.pl'
 TMP_DIR='/scratch/ac05869/gelsemium_yahs/temp'
 PAIR_DIR='/scratch/ac05869/gelsemium_yahs/paired'
-#REP_DIR='/scratch/ac05869/gelsemium_yahs/deduplicated'
+REP_DIR='/scratch/ac05869/gelsemium_yahs/deduplicated'
 #REP_LABEL=${LABEL}_rep1
 #MERGE_DIR='/path/to/final/merged/alignments/from/any/biological/replicates'
 MAPQ_FILTER=10
@@ -43,6 +43,7 @@ needed"
 [ -d $FILT_DIR ] || mkdir -p $FILT_DIR
 [ -d $TMP_DIR ] || mkdir -p $TMP_DIR
 [ -d $PAIR_DIR ] || mkdir -p $PAIR_DIR
+[ -d $REP_DIR ] || mkdir -p $REP_DIR
 
 ##Run only once. Skip if this step has been completed
 #echo "### Step 0: Index reference"
@@ -69,8 +70,8 @@ needed"
 #relation to its read orientation. This is accomplished using the script “filter_five_end.pl.”
 #####
 
-#echo "### Step 2.A: Filter 5' end (1st)"
-#samtools view -h $RAW_DIR/${HIC}_1.bam | perl $FILTER | samtools view -Sb - > $FILT_DIR/${HIC}_1.bam
+echo "### Step 2.A: Filter 5' end (1st)"
+samtools view -h $RAW_DIR/${HIC}_1.bam | perl $FILTER | samtools view -Sb - > $FILT_DIR/${HIC}_1.bam
 
 echo "### Step 2.B: Filter 5' end (2nd)"
 samtools view -h $RAW_DIR/${HIC}_2.bam | perl $FILTER | samtools view -Sb - > $FILT_DIR/${HIC}_2.bam
@@ -87,4 +88,30 @@ echo "### Step 3A: Pair reads & mapping quality filter"
 perl $COMBINER $FILT_DIR/${HIC}_1.bam $FILT_DIR/${HIC}_2.bam samtools $MAPQ_FILTER | samtools view -bS -t $FAIDX - | samtools sort -@ $CPU -o $TMP_DIR/${HIC}.bam
 
 echo "### Step 3.B: Add read group"
-java -Xmx4G -Djava.io.tmpdir=temp/ -jar picard AddOrReplaceReadGroups INPUT=$TMP_DIR/${HIC}.bam OUTPUT=$PAIR_DIR/${HIC}.bam ID=$HIC LB=$HIC SM=$LABEL PL=ILLUMINA PU=none
+java -Xmx4G -Djava.io.tmpdir=temp/ -jar picard \
+AddOrReplaceReadGroups INPUT=$TMP_DIR/${HIC}.bam OUTPUT=$PAIR_DIR/${HIC}.bam ID=$HIC LB=$HIC SM=$LABEL PL=ILLUMINA PU=none
+
+##### I do not have replicates, but the replicate directory was kept in the pipeline
+#Note, that if you perform merging of technical replicates above, then the file names and locations will
+#change from the written flow of this pipeline. You will need to adjust the file names and locations that are
+#used as input in the following step - PCR duplicate removal.
+#####
+
+echo "### Step 4: Mark duplicates"
+java -Xmx30G -XX:-UseGCOverheadLimit -Djava.io.tmpdir=temp/ -jar picard \
+MarkDuplicates INPUT=$PAIR_DIR/${HIC}.bam OUTPUT=$REP_DIR/${HIC}.bam \
+METRICS_FILE=$REP_DIR/metrics.${HIC}.txt TMP_DIR=$TMP_DIR \
+ASSUME_SORTED=TRUE VALIDATION_STRINGENCY=LENIENT REMOVE_DUPLICATES=TRUE
+
+samtools index $REP_DIR/${HIC}.bam
+
+perl $STATS $REP_DIR/${HIC}.bam > $REP_DIR/${HIC}.bam.stats
+echo "Finished Mapping Pipeline through Duplicate Removal"
+
+#####
+#The final output of this pipeline is a single BAM
+#file that contains the paired, 5’-filtered, and duplicate-removed Hi-C reads mapped to the reference
+#sequences of choice. The resulting statistics file has a breakdown of the total number of intra-contig
+#read-pairs, long-range intra-contig read-pairs, and inter-contig read-pairs in the final processed BAM
+#file.
+#####
