@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/bin/perl
 use strict;
 
 if ((scalar @ARGV) != 1){
