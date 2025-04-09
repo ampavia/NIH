@@ -70,11 +70,11 @@ needed"
 #relation to its read orientation. This is accomplished using the script “filter_five_end.pl.”
 #####
 
-echo "### Step 2.A: Filter 5' end (1st)"
-samtools view -h $RAW_DIR/${HIC}_1.bam | perl $FILTER | samtools view -Sb - > $FILT_DIR/${HIC}_1.bam
+#echo "### Step 2.A: Filter 5' end (1st)"
+#samtools view -h $RAW_DIR/${HIC}_1.bam | perl $FILTER | samtools view -Sb - > $FILT_DIR/${HIC}_1.bam
 
-echo "### Step 2.B: Filter 5' end (2nd)"
-samtools view -h $RAW_DIR/${HIC}_2.bam | perl $FILTER | samtools view -Sb - > $FILT_DIR/${HIC}_2.bam
+#echo "### Step 2.B: Filter 5' end (2nd)"
+#samtools view -h $RAW_DIR/${HIC}_2.bam | perl $FILTER | samtools view -Sb - > $FILT_DIR/${HIC}_2.bam
 
 #####
 #After filtering, we pair the filtered single-end Hi-C reads using “two_read_bam_combiner.pl,” which
@@ -82,24 +82,23 @@ samtools view -h $RAW_DIR/${HIC}_2.bam | perl $FILTER | samtools view -Sb - > $F
 #file using Picard Tools
 #####
 
-module load picard/3.2.0-Java-17
-
-echo "### Step 3A: Pair reads & mapping quality filter"
-perl $COMBINER $FILT_DIR/${HIC}_1.bam $FILT_DIR/${HIC}_2.bam samtools $MAPQ_FILTER | samtools view -bS -t $FAIDX - | samtools sort -@ $CPU -o $TMP_DIR/${HIC}.bam
+#echo "### Step 3.A: Pair reads & mapping quality filter"
+#perl $COMBINER $FILT_DIR/${HIC}_1.bam $FILT_DIR/${HIC}_2.bam samtools $MAPQ_FILTER | samtools view -bS -t $FAIDX - | samtools sort -@ $CPU -o $TMP_DIR/${HIC}.bam
 
 echo "### Step 3.B: Add read group"
-java -Xmx4G -Djava.io.tmpdir=temp/ -jar picard \
-AddOrReplaceReadGroups INPUT=$TMP_DIR/${HIC}.bam OUTPUT=$PAIR_DIR/${HIC}.bam ID=$HIC LB=$HIC SM=$LABEL PL=ILLUMINA PU=none
+module load picard/3.2.0-Java-17
+java -Xmx4G -Djava.io.tmpdir=temp/ -jar $EBROOTPICARD/picard.jar AddOrReplaceReadGroups \
+INPUT=$TMP_DIR/${HIC}.bam OUTPUT=$PAIR_DIR/${HIC}.bam ID=$HIC LB=$HIC SM=$LABEL PL=ILLUMINA PU=none
 
 ##### I do not have replicates, but the replicate directory was kept in the pipeline
-#Note, that if you perform merging of technical replicates above, then the file names and locations will
+#Note, that if you perform merging of technical replicates, then the file names and locations will
 #change from the written flow of this pipeline. You will need to adjust the file names and locations that are
 #used as input in the following step - PCR duplicate removal.
 #####
 
 echo "### Step 4: Mark duplicates"
-java -Xmx30G -XX:-UseGCOverheadLimit -Djava.io.tmpdir=temp/ -jar picard \
-MarkDuplicates INPUT=$PAIR_DIR/${HIC}.bam OUTPUT=$REP_DIR/${HIC}.bam \
+java -Xmx30G -XX:-UseGCOverheadLimit -Djava.io.tmpdir=temp/ -jar $EBROOTPICARD/picard.jar MarkDuplicates \
+INPUT=$PAIR_DIR/${HIC}.bam OUTPUT=$REP_DIR/${HIC}.bam \
 METRICS_FILE=$REP_DIR/metrics.${HIC}.txt TMP_DIR=$TMP_DIR \
 ASSUME_SORTED=TRUE VALIDATION_STRINGENCY=LENIENT REMOVE_DUPLICATES=TRUE
 
