@@ -9,6 +9,7 @@
 #SBATCH --error=/scratch/ac05869/err_out/%x_%j.err		# Standard error log, e.g., testBowtie2_12345.err
 #SBATCH --mail-user=ac05869@uga.edu                    # Where to send mail (replace cbergman with your myid)
 #SBATCH --mail-type=END,FAIL                            # Mail events (BEGIN, END, FAIL, ALL)
+shopt -s expand_aliases
 
 REF='/scratch/ac05869/gelsemium_yahs/gese_v1.asm.fa' #the contig file
 HIC='gel-an_1438201_S3HiC' #same as mapping pipeline script
@@ -17,12 +18,11 @@ YAHS='/scratch/ac05869/gelsemium_yahs/yahs' #same as mapping pipeline output dir
 JBAT='/scratch/ac05869/gelsemium_yahs/juicebox'
 [ -d $JBAT ] || mkdir -p $JBAT
 
-#shopt -s expand_aliases
+alias juicer_tools='java -jar $EBROOTJUICEBOX/juicer_tools.2.20.00.jar pre'
 
 module load YaHS/1.2.2-GCC-11.3.0
 module load Juicebox/2.20.00
 module load SAMtools/1.16.1-GCC-11.3.0 #will sort the bam file that is being created, then index the bam file
-#alias juicer_tools='java -jar $EBROOTJUICEBOX/juicer_tools.2.20.00.jar'
 
 #echo "### Step 0: index reference contigs with samtools"
 #samtools faidx ${REF}
@@ -44,7 +44,7 @@ module load SAMtools/1.16.1-GCC-11.3.0 #will sort the bam file that is being cre
 #####
 #cat ${YAHS}/tmp_juicer_pre.log | grep "PRE_C_SIZE" | cut -d' ' -f2- >${YAHS}/${PREF}_scaffolds_final.chrom.sizes
 echo "### Step 2.C: do juicer hic map"
-(java -jar $EBROOTJUICEBOX/juicer_tools.2.20.00.jar ${YAHS}/alignments_sorted.txt ${YAHS}/${PREF}.hic.part ${YAHS}/${PREF}_scaffolds_final.chrom.sizes) && (mv ${YAHS}/${PREF}.hic.part ${YAHS}/${PREF}.hic)
+(${juicer_tools} ${YAHS}/alignments_sorted.txt ${YAHS}/${PREF}.hic.part ${YAHS}/${PREF}_scaffolds_final.chrom.sizes) && (mv ${YAHS}/${PREF}.hic.part ${YAHS}/${PREF}.hic)
 
 echo "### Step 3: generate input file for juicer_tools - assembly (JBAT) mode (-a)"
 
@@ -57,7 +57,7 @@ juicer pre -a -o ${JBAT}/${PREF}_JBAT ${YAHS}/${PREF}.bin ${YAHS}/${PREF}_scaffo
 #tmp_juicer_pre_JBAT.log  - the output log file
 
 cat ${JBAT}/tmp_juicer_pre_JBAT.log | grep "PRE_C_SIZE" | cut -d' ' -f2- >${JBAT}/${PREF}_JBAT.chrom.sizes
-(java -jar $EBROOTJUICEBOX/juicer_tools.2.20.00.jar ${JBAT}/${PREF}_JBAT.txt ${JBAT}/${PREF}_JBAT.hic.part ${JBAT}/${PREF}_JBAT.chrom.sizes) \
+(${juicer_tools} ${JBAT}/${PREF}_JBAT.txt ${JBAT}/${PREF}_JBAT.hic.part ${JBAT}/${PREF}_JBAT.chrom.sizes) \
 && (mv ${JBAT}/${PREF}_JBAT.hic.part ${JBAT}/${PREF}_JBAT.hic)
 
 # echo "### Final step: generate final genome assembly file after manual curation with JuiceBox (JBAT)"
