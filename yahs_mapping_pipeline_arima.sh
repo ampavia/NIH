@@ -28,7 +28,7 @@ COMBINER='/home/ac05869/NIH/two_read_bam_combiner.pl'
 STATS='/home/ac05869/NIH/get_stats.pl'
 TMP_DIR='/scratch/ac05869/gelsemium_yahs/temp'
 PAIR_DIR='/scratch/ac05869/gelsemium_yahs/paired'
-REP_DIR='/scratch/ac05869/gelsemium_yahs/deduplicated'
+YAHS='/scratch/ac05869/gelsemium_yahs/yahs'
 #REP_LABEL=${LABEL}_rep1
 #MERGE_DIR='/path/to/final/merged/alignments/from/any/biological/replicates'
 MAPQ_FILTER=10
@@ -43,7 +43,7 @@ needed"
 [ -d $FILT_DIR ] || mkdir -p $FILT_DIR
 [ -d $TMP_DIR ] || mkdir -p $TMP_DIR
 [ -d $PAIR_DIR ] || mkdir -p $PAIR_DIR
-[ -d $REP_DIR ] || mkdir -p $REP_DIR
+[ -d $YAHS ] || mkdir -p $YAHS
 
 ##Run only once. Skip if this step has been completed
 #echo "### Step 0: Index reference"
@@ -85,12 +85,12 @@ needed"
 #echo "### Step 3.A: Pair reads & mapping quality filter"
 #perl $COMBINER $FILT_DIR/${HIC}_1.bam $FILT_DIR/${HIC}_2.bam samtools $MAPQ_FILTER | samtools view -bS -t $FAIDX - | samtools sort -@ $CPU -o $TMP_DIR/${HIC}.bam
 
-echo "### Step 3.B: Add read group"
+#echo "### Step 3.B: Add read group"
 module load picard/3.2.0-Java-17
-java -Xmx4G -Djava.io.tmpdir=temp/ -jar $EBROOTPICARD/picard.jar AddOrReplaceReadGroups \
-INPUT=$TMP_DIR/${HIC}.bam OUTPUT=$PAIR_DIR/${HIC}.bam ID=$HIC LB=$HIC SM=$LABEL PL=ILLUMINA PU=none
+#java -Xmx4G -Djava.io.tmpdir=temp/ -jar $EBROOTPICARD/picard.jar AddOrReplaceReadGroups \
+#INPUT=$TMP_DIR/${HIC}.bam OUTPUT=$PAIR_DIR/${HIC}.bam ID=$HIC LB=$HIC SM=$LABEL PL=ILLUMINA PU=none
 
-##### I do not have replicates, but the replicate directory was kept in the pipeline
+##### No replicates in this case, so the replicate directory was renamed for yahs input file
 #Note, that if you perform merging of technical replicates, then the file names and locations will
 #change from the written flow of this pipeline. You will need to adjust the file names and locations that are
 #used as input in the following step - PCR duplicate removal.
@@ -98,13 +98,13 @@ INPUT=$TMP_DIR/${HIC}.bam OUTPUT=$PAIR_DIR/${HIC}.bam ID=$HIC LB=$HIC SM=$LABEL 
 
 echo "### Step 4: Mark duplicates"
 java -Xmx30G -XX:-UseGCOverheadLimit -Djava.io.tmpdir=temp/ -jar $EBROOTPICARD/picard.jar MarkDuplicates \
-INPUT=$PAIR_DIR/${HIC}.bam OUTPUT=$REP_DIR/${HIC}.bam \
-METRICS_FILE=$REP_DIR/metrics.${HIC}.txt TMP_DIR=$TMP_DIR \
+INPUT=$PAIR_DIR/${HIC}.bam OUTPUT=$YAHS/${HIC}.bam \
+METRICS_FILE=$YAHS/metrics.${HIC}.txt TMP_DIR=$TMP_DIR \
 ASSUME_SORTED=TRUE VALIDATION_STRINGENCY=LENIENT REMOVE_DUPLICATES=TRUE
 
-samtools index $REP_DIR/${HIC}.bam
+samtools index $YAHS/${HIC}.bam
 
-perl $STATS $REP_DIR/${HIC}.bam > $REP_DIR/${HIC}.bam.stats
+perl $STATS $YAHS/${HIC}.bam > $YAHS/${HIC}.bam.stats
 echo "Finished Mapping Pipeline through Duplicate Removal"
 
 #####
