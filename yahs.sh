@@ -17,29 +17,34 @@ YAHS='/scratch/ac05869/gelsemium_yahs/yahs' #same as mapping pipeline output dir
 
 module load YaHS/1.2.2-GCC-11.3.0
 module load Juicebox/2.20.00
+module load SAMtools/1.16.1-GCC-11.3.0 #will sort the bam file that is being created, then index the bam file
+
 alias juicer_tools='java -jar $EBROOTJUICEBOX/juicer_tools.2.20.00.jar'
-echo "### Step 0: run yahs"
+echo "### Step 0: index reference contigs with samtools"
+samtools faidx ${REF}
+
+echo "### Step 1: run yahs"
 yahs -o ${YAHS}/${PREF} ${REF} ${YAHS}/${HIC}.bam
 
-echo "### Step 1.A: generate HiC contact map"
+echo "### Step 2.A: generate HiC contact map"
 (juicer pre ${YAHS}/${PREF}.bin ${YAHS}/${PREF}_scaffolds_final.agp ${REF}.fai \
 2>${YAHS}/tmp_juicer_pre.log \
 | LC_ALL=C sort -k2,2d -k6,6d -T ${YAHS} --parallel=8 -S32G \
 | awk 'NF' > ${YAHS}/alignments_sorted.txt.part) \
 && (mv ${YAHS}/alignments_sorted.txt.part ${YAHS}/alignments_sorted.txt)
 
-echo "### Step 1.B: make scaffolds_final.chrom.sizes for juicer_tools input file"
+echo "### Step 2.B: make scaffolds_final.chrom.sizes for juicer_tools input file"
 #####
 #The file for scaffold sizes should contain two columns - scaffold name and scaffold size, which can be taken from the first two columns of the FASTA index file 
 #or the log file created in the previous step
 #####
 cat ${YAHS}/tmp_juicer_pre.log | grep "PRE_C_SIZE" | cut -d' ' -f2- >${YAHS}/${PREF}_scaffolds_final.chrom.sizes
 
-echo "### Step 1.C: do juicer hic map"
+echo "### Step 2.C: do juicer hic map"
 (${juicer_tools} ${YAHS}/alignments_sorted.txt ${YAHS}/${PREF}.hic.part ${YAHS}/${PREF}_scaffolds_final.chrom.sizes) \
 && (mv ${YAHS}/${PREF}.hic.part ${YAHS}/${PREF}.hic)
 
-echo "### Step 2: generate input file for juicer_tools - assembly (JBAT) mode (-a)"
+echo "### Step 3: generate input file for juicer_tools - assembly (JBAT) mode (-a)"
 $JBAT='/scratch/ac05869/gelsemium_yahs/juicebox'
 [ -d $JBAT ] || mkdir -p $JBAT
 juicer pre -a -o ${JBAT}/${PREF}_JBAT ${YAHS}/${PREF}.bin ${YAHS}/${PREF}_scaffolds_final.agp ${REF}.fai 2>${JBAT}/tmp_juicer_pre_JBAT.log
