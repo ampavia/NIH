@@ -1,14 +1,4 @@
 #!/bin/bash
-#SBATCH --job-name=yahs1	                    # Job name
-#SBATCH --partition=highmem_p		                        # Partition (queue) name
-#SBATCH --ntasks=1			                            # Single task job
-#SBATCH --cpus-per-task=32		                        # Number of cores per task - match this to the num_threads used by BLAST
-#SBATCH --mem=250gb			                            # Total memory for job
-#SBATCH --time=72:00:00  		                        # Time limit hrs:min:sec
-#SBATCH --output=/scratch/ac05869/err_out/%x_%j.out	# Location of standard output and error log files (replace cbergman with your myid)
-#SBATCH --error=/scratch/ac05869/err_out/%x_%j.err		# Standard error log, e.g., testBowtie2_12345.err
-#SBATCH --mail-user=ac05869@uga.edu                    # Where to send mail (replace cbergman with your myid)
-#SBATCH --mail-type=END,FAIL                            # Mail events (BEGIN, END, FAIL, ALL)
 
 REF='/scratch/ac05869/gelsemium_yahs/gese_v1.asm.fa' #the contig file
 HIC='gel-an_1438201_S3HiC' #same as mapping pipeline script
@@ -18,32 +8,30 @@ JBAT='/scratch/ac05869/gelsemium_yahs/juicebox'
 [ -d $JBAT ] || mkdir -p $JBAT
 
 module load YaHS/1.2.2-GCC-11.3.0
-module load Juicebox/2.20.00
-module load SAMtools/1.16.1-GCC-11.3.0 #will sort the bam file that is being created, then index the bam file
+module load Juicebox/1.9.9
+module load SAMtools/1.16.1-GCC-11.3.0
 
-#echo "### Step 0: index reference contigs with samtools"
-#samtools faidx ${REF}
+echo "### Step 1: run yahs"
+yahs -o ${YAHS}/${PREF} ${REF} ${YAHS}/${HIC}.bam
 
-#echo "### Step 1: run yahs"
-#yahs -o ${YAHS}/${PREF} ${REF} ${YAHS}/${HIC}.bam
+echo "### Step 2.A: generate HiC contact map"
+(juicer pre ${YAHS}/${PREF}.bin ${YAHS}/${PREF}_scaffolds_final.agp ${REF}.fai \
+2>${YAHS}/tmp_juicer_pre.log \
+| LC_ALL=C sort -k2,2d -k6,6d -T ${YAHS} --parallel=8 -S32G \
+| awk 'NF' > ${YAHS}/alignments_sorted.txt.part) \
+&& (mv ${YAHS}/alignments_sorted.txt.part ${YAHS}/alignments_sorted.txt)
 
-#echo "### Step 2.A: generate HiC contact map"
-#(juicer pre ${YAHS}/${PREF}.bin ${YAHS}/${PREF}_scaffolds_final.agp ${REF}.fai \
-#2>${YAHS}/tmp_juicer_pre.log \
-#| LC_ALL=C sort -k2,2d -k6,6d -T ${YAHS} --parallel=8 -S32G \
-#| awk 'NF' > ${YAHS}/alignments_sorted.txt.part) \
-#&& (mv ${YAHS}/alignments_sorted.txt.part ${YAHS}/alignments_sorted.txt)
-
-#echo "### Step 2.B: make scaffolds_final.chrom.sizes for juicer_tools input file"
+echo "### Step 2.B: make scaffolds_final.chrom.sizes for juicer_tools input file"
 #####
 #The file for scaffold sizes should contain two columns - scaffold name and scaffold size, which can be taken from the first two columns of the FASTA index file 
 #or the log file created in the previous step
 #####
-#cat ${YAHS}/tmp_juicer_pre.log | grep "PRE_C_SIZE" | cut -d' ' -f2- >${YAHS}/${PREF}_scaffolds_final.chrom.sizes
-echo "### Step 2.C: do juicer hic map"
-(java -jar $EBROOTJUICEBOX/juicer_tools.2.20.00.jar pre ${YAHS}/alignments_sorted.txt ${YAHS}/${PREF}.hic.part ${YAHS}/${PREF}_scaffolds_final.chrom.sizes) && (mv ${YAHS}/${PREF}.hic.part ${YAHS}/${PREF}.hic)
+cat ${YAHS}/tmp_juicer_pre.log | grep "PRE_C_SIZE" | cut -d' ' -f2- >${YAHS}/${PREF}_scaffolds_final.chrom.sizes
 
-echo "### Step 3: generate input file for juicer_tools - assembly (JBAT) mode (-a)"
+echo "### Step 2.C: do juicer hic map"
+(java -jar -Xmx32G $EBROOTJUICEBOX/juicer_tools.1.9.9.jar pre ${YAHS}/alignments_sorted.txt ${YAHS}/${PREF}.hic.part ${YAHS}/${PREF}_scaffolds_final.chrom.sizes) && (mv ${YAHS}/${PREF}.hic.part ${YAHS}/${PREF}.hic)
+
+echo "### Step 3: generate HiC contact map file that can be loaded by Juicebox for manual editing - assembly (JBAT) mode (-a)"
 
 juicer pre -a -o ${JBAT}/${PREF}_JBAT ${YAHS}/${PREF}.bin ${YAHS}/${PREF}_scaffolds_final.agp ${REF}.fai 2>${JBAT}/tmp_juicer_pre_JBAT.log
 ##This results in 5 output files:
@@ -53,8 +41,9 @@ juicer pre -a -o ${JBAT}/${PREF}_JBAT ${YAHS}/${PREF}.bin ${YAHS}/${PREF}_scaffo
 #out_JBAT.assembly.agp    - AGP file contains same information as the assembly annotation file. Not a real AGP file as there are no gaps.
 #tmp_juicer_pre_JBAT.log  - the output log file
 
+echo "### Step 4: need to run juicer_tools pre with 'out_JBAT.txt' (BED file for hic links)."
 cat ${JBAT}/tmp_juicer_pre_JBAT.log | grep "PRE_C_SIZE" | cut -d' ' -f2- >${JBAT}/${PREF}_JBAT.chrom.sizes
-(java -jar $EBROOTJUICEBOX/juicer_tools.2.20.00.jar pre ${JBAT}/${PREF}_JBAT.txt ${JBAT}/${PREF}_JBAT.hic.part ${JBAT}/${PREF}_JBAT.chrom.sizes) \
+(java -jar -Xmx32G $EBROOTJUICEBOX/juicer_tools.1.9.9.jar pre ${JBAT}/${PREF}_JBAT.txt ${JBAT}/${PREF}_JBAT.hic.part ${JBAT}/${PREF}_JBAT.chrom.sizes) \
 && (mv ${JBAT}/${PREF}_JBAT.hic.part ${JBAT}/${PREF}_JBAT.hic)
 
 # echo "### Final step: generate final genome assembly file after manual curation with JuiceBox (JBAT)"
