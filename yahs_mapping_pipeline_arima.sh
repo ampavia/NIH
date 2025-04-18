@@ -14,15 +14,16 @@
 #The mapping pipeline will output a single binary alignment map file (BAM file) that contains paired and
 #filtered Hi-C paired-end reads mapped to reference sequences. Workflow taken from Arima mapping pipeline
 #####
+WD='/scratch/ac05869/gelsemium_yahs/assembly'
 CPU=32
 HIC='gel-an_1438201_S3HiC'
 IN_DIR='/scratch/ac05869/gelsemium_yahs/gel-an_1438200'
 REF='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa'
-PREFIX='gese_v1_organellar_filter.asm.fa'
+ASM='gese_v1_organellar_filter.asm.fa'
 FAIDX='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa.fai'
-RAW_DIR='/scratch/ac05869/gese_final_yahs/raw2'
+RAW_DIR='/scratch/ac05869/gese_final_yahs/raw'
 FILT_DIR='/scratch/ac05869/gese_final_yahs/filtered'
-LABEL='gese_v1_org_filter_yahs'
+LABEL='gese_v1.org_filter'
 FILTER='/home/ac05869/NIH/filter_five_end.pl'
 COMBINER='/home/ac05869/NIH/two_read_bam_combiner.pl'
 STATS='/home/ac05869/NIH/get_stats.pl'
@@ -38,27 +39,28 @@ module load BWA/0.7.17-GCCcore-11.3.0 #will create indeces for reference and map
 module load SAMtools/1.16.1-GCC-11.3.0 #will also do index of the genome to be used in this pipeline and yahs
 module load picard/3.2.0-Java-17
 
-echo "### Step 0: Check output directories’ existence & create them as
+>&2 echo "### Step 0: Check output directories’ existence & create them as
 needed"
 [ -d $RAW_DIR ] || mkdir -p $RAW_DIR
 [ -d $FILT_DIR ] || mkdir -p $FILT_DIR
 [ -d $TMP_DIR ] || mkdir -p $TMP_DIR
 [ -d $PAIR_DIR ] || mkdir -p $PAIR_DIR
 [ -d $YAHS ] || mkdir -p $YAHS
+cd WD
 
 ##Run only once. Skip if this step has been completed
 echo "### Step 0: Index reference"
-bwa index -a bwtsw -p $PREFIX $REF
+bwa index -a bwtsw -p $ASM $REF
 
 #####
 #Next, we use BWA-MEM to align the Hi-C paired-end reads to reference sequences. Because Hi-C
 #captures conformation via proximity-ligated fragments, paired-end reads are first mapped independently
 #(assingle-ends)usingBWA-MEM and are subsequently paired in a later step.
 #####
-echo "### Step 1.A: FASTQ to BAM (1st)"
+>&2 echo "### Step 1.A: FASTQ to BAM (1st)"
 bwa mem -t $CPU $REF $IN_DIR/${HIC}_R1.fastq.gz | samtools view -@ $CPU -Sb - > $RAW_DIR/${HIC}_1.bam
 
-echo "### Step 1.B: FASTQ to BAM (2nd)"
+>&2 echo "### Step 1.B: FASTQ to BAM (2nd)"
 bwa mem -t $CPU $REF $IN_DIR/${HIC}_R2.fastq.gz | samtools view -@ $CPU -Sb - > $RAW_DIR/${HIC}_2.bam
 
 #####
@@ -71,10 +73,10 @@ bwa mem -t $CPU $REF $IN_DIR/${HIC}_R2.fastq.gz | samtools view -@ $CPU -Sb - > 
 #relation to its read orientation. This is accomplished using the script “filter_five_end.pl.”
 #####
 
-echo "### Step 2.A: Filter 5' end (1st)"
+>&2 echo "### Step 2.A: Filter 5' end (1st)"
 samtools view -h $RAW_DIR/${HIC}_1.bam | perl $FILTER | samtools view -Sb - > $FILT_DIR/${HIC}_1.bam
 
-echo "### Step 2.B: Filter 5' end (2nd)"
+>&2 echo "### Step 2.B: Filter 5' end (2nd)"
 samtools view -h $RAW_DIR/${HIC}_2.bam | perl $FILTER | samtools view -Sb - > $FILT_DIR/${HIC}_2.bam
 
 #####
@@ -83,11 +85,11 @@ samtools view -h $RAW_DIR/${HIC}_2.bam | perl $FILTER | samtools view -Sb - > $F
 #file using Picard Tools
 #####
 
-echo "### Step 3.A: Pair reads & mapping quality filter"
+>&2 echo "### Step 3.A: Pair reads & mapping quality filter"
 samtools faidx ${REF}
 perl $COMBINER $FILT_DIR/${HIC}_1.bam $FILT_DIR/${HIC}_2.bam samtools $MAPQ_FILTER | samtools view -bS -t $FAIDX - | samtools sort -@ $CPU -o $TMP_DIR/${HIC}.bam
 
-echo "### Step 3.B: Add read group"
+>&2 echo "### Step 3.B: Add read group"
 java -Xmx4G -Djava.io.tmpdir=temp/ -jar $EBROOTPICARD/picard.jar AddOrReplaceReadGroups \
 INPUT=$TMP_DIR/${HIC}.bam OUTPUT=$PAIR_DIR/${HIC}.bam ID=$HIC LB=$HIC SM=$LABEL PL=ILLUMINA PU=none
 
@@ -97,7 +99,7 @@ INPUT=$TMP_DIR/${HIC}.bam OUTPUT=$PAIR_DIR/${HIC}.bam ID=$HIC LB=$HIC SM=$LABEL 
 #used as input in the following step - PCR duplicate removal.
 #####
 
-echo "### Step 4: Mark duplicates"
+>&2 echo "### Step 4: Mark duplicates"
 java -Xmx30G -XX:-UseGCOverheadLimit -Djava.io.tmpdir=temp/ -jar $EBROOTPICARD/picard.jar MarkDuplicates \
 INPUT=$PAIR_DIR/${HIC}.bam OUTPUT=$YAHS/${HIC}.bam \
 METRICS_FILE=$YAHS/metrics.${HIC}.txt TMP_DIR=$TMP_DIR \
@@ -106,7 +108,7 @@ ASSUME_SORTED=TRUE VALIDATION_STRINGENCY=LENIENT REMOVE_DUPLICATES=TRUE
 samtools index $YAHS/${HIC}.bam
 
 perl $STATS $YAHS/${HIC}.bam > $YAHS/${HIC}.bam.stats
-echo "Finished Mapping Pipeline through Duplicate Removal"
+>&2 echo "Finished Mapping Pipeline through Duplicate Removal"
 
 #####
 #The final output of this pipeline is a single BAM
