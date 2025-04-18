@@ -14,7 +14,7 @@
 #The mapping pipeline will output a single binary alignment map file (BAM file) that contains paired and
 #filtered Hi-C paired-end reads mapped to reference sequences. Workflow taken from Arima mapping pipeline
 #####
-WD='/scratch/ac05869/gelsemium_yahs/assembly'
+WD='/scratch/ac05869/gese_final_yahs/assembly'
 CPU=32
 HIC='gel-an_1438201_S3HiC'
 IN_DIR='/scratch/ac05869/gelsemium_yahs/gel-an_1438200'
@@ -46,7 +46,8 @@ needed"
 [ -d $TMP_DIR ] || mkdir -p $TMP_DIR
 [ -d $PAIR_DIR ] || mkdir -p $PAIR_DIR
 [ -d $YAHS ] || mkdir -p $YAHS
-cd WD
+
+cd $WD
 
 ##Run only once. Skip if this step has been completed
 echo "### Step 0: Index reference"
