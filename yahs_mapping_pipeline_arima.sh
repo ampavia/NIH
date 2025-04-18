@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=yahs_full_pipeline	                    # Job name
+#SBATCH --job-name=yahs_final_asm	                    # Job name
 #SBATCH --partition=highmem_p		                        # Partition (queue) name
 #SBATCH --ntasks=1			                            # Single task job
 #SBATCH --cpus-per-task=32		                        # Number of cores per task - match this to the num_threads used by BLAST
@@ -17,18 +17,18 @@
 CPU=32
 HIC='gel-an_1438201_S3HiC'
 IN_DIR='/scratch/ac05869/gelsemium_yahs/gel-an_1438200'
-REF='/scratch/ac05869/gelsemium_yahs/gese_v1.asm.fa'
-PREFIX='gese_v1.asm.fa'
-FAIDX='/scratch/ac05869/gelsemium_yahs/gese_v1.asm.fa.fai'
-RAW_DIR='/scratch/ac05869/gelsemium_yahs/raw2'
-FILT_DIR='/scratch/ac05869/gelsemium_yahs/filtered'
-LABEL='gelsemium_yahs'
+REF='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa'
+PREFIX='gese_v1_organellar_filter.asm.fa'
+FAIDX='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa.fai'
+RAW_DIR='/scratch/ac05869/gese_final_yahs/raw2'
+FILT_DIR='/scratch/ac05869/gese_final_yahs/filtered'
+LABEL='gese_v1_org_filter_yahs'
 FILTER='/home/ac05869/NIH/filter_five_end.pl'
 COMBINER='/home/ac05869/NIH/two_read_bam_combiner.pl'
 STATS='/home/ac05869/NIH/get_stats.pl'
-TMP_DIR='/scratch/ac05869/gelsemium_yahs/temp'
-PAIR_DIR='/scratch/ac05869/gelsemium_yahs/paired'
-YAHS='/scratch/ac05869/gelsemium_yahs/yahs'
+TMP_DIR='/scratch/ac05869/gese_final_yahs/temp'
+PAIR_DIR='/scratch/ac05869/gese_final_yahs/paired'
+YAHS='/scratch/ac05869/gese_final_yahs/yahs'
 #REP_LABEL=${LABEL}_rep1
 #MERGE_DIR='/path/to/final/merged/alignments/from/any/biological/replicates'
 MAPQ_FILTER=10
@@ -37,7 +37,6 @@ MAPQ_FILTER=10
 module load BWA/0.7.17-GCCcore-11.3.0 #will create indeces for reference and map reads against reference 
 module load SAMtools/1.16.1-GCC-11.3.0 #will also do index of the genome to be used in this pipeline and yahs
 module load picard/3.2.0-Java-17
-
 
 echo "### Step 0: Check output directories’ existence & create them as
 needed"

@@ -1,10 +1,10 @@
 #!/bin/bash
 
-REF='/scratch/ac05869/gelsemium_yahs/gese_v1.asm.fa' #the contig file
+REF='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa' #the contig file
 HIC='gel-an_1438201_S3HiC' #same as mapping pipeline script
-PREF='gese_v1.asm.yahs' #prefix of the output file
-YAHS='/scratch/ac05869/gelsemium_yahs/yahs' #same as mapping pipeline output directory
-JBAT='/scratch/ac05869/gelsemium_yahs/juicebox'
+PREF='gese_v1_organellar_filter.asm.fa' #prefix of the output file
+YAHS='/scratch/ac05869/gese_final_yahs/yahs' #same as mapping pipeline output directory
+JBAT='/scratch/ac05869/gese_final_yahs/juicebox'
 [ -d $JBAT ] || mkdir -p $JBAT
 
 module load YaHS/1.2.2-GCC-11.3.0
