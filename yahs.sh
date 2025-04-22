@@ -1,4 +1,15 @@
 #!/bin/bash
+#SBATCH --job-name=scaffolding_stats	                    # Job name
+#SBATCH --partition=highmem_p		                        # Partition (queue) name
+#SBATCH --ntasks=1			                            # Single task job
+#SBATCH --cpus-per-task=32		                        # Number of cores per task - match this to the num_threads used by BLAST
+#SBATCH --mem=250gb			                            # Total memory for job
+#SBATCH --time=72:00:00  		                        # Time limit hrs:min:sec
+#SBATCH --output=/scratch/ac05869/err_out/%x_%j.out	# Location of standard output and error log files (replace cbergman with your myid)
+#SBATCH --error=/scratch/ac05869/err_out/%x_%j.err		# Standard error log, e.g., testBowtie2_12345.err
+#SBATCH --mail-user=ac05869@uga.edu                    # Where to send mail (replace cbergman with your myid)
+#SBATCH --mail-type=BEGIN,END,FAIL                            # Mail events (BEGIN, END, FAIL, ALL)
+
 
 REF='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa' #the contig file
 HIC='gel-an_1438201_S3HiC' #same as mapping pipeline script
@@ -7,9 +18,11 @@ YAHS='/scratch/ac05869/gese_final_yahs/yahs' #same as mapping pipeline output di
 JBAT='/scratch/ac05869/gese_final_yahs/juicebox'
 STATS='/scratch/ac05869/gese_final_yahs/yahs/filter'
 CPU=32
-Min50='/scratch/ac05869/gese_final_yahs/yahs/filter/gese_v1.org_50kb_filter.asm.yahs.fa'
-Min100='/scratch/ac05869/gese_final_yahs/yahs/filter/gese_v1.org_100kb_filter.asm.yahs.fa'
-SCAF='/scratch/ac05869/gese_final_yahs/yahs/gese_v1.org_filter_scaffolds_final.fa'
+SCAF='/scratch/ac05869/gese_final_yahs/yahs/gese_v1.org_filter.asm.yahs_scaffolds_final.fa'
+Min50='/scratch/ac05869/gese_final_yahs/yahs/filter/gese_v1.org_filter.asm.yahs_scaffolds_final_50kb_filter.fa'
+Min100='/scratch/ac05869/gese_final_yahs/yahs/filter/gese_v1.org_filter.asm.yahs_scaffolds_final_100kb_filter.fa'
+#BUSCO='/scratch/ac05869/gese_final_yahs/yahs/busco_downloads'
+
 [ -d $JBAT ] || mkdir -p $JBAT
 [ -d $STATS ] || mkdir -p $STATS 
 
@@ -30,15 +43,15 @@ yahs -o ${YAHS}/${PREF} ${REF} ${YAHS}/${HIC}.bam
 
 >&2 echo"### Step 1.1: check stats"
 seqkit stats -a -o $STATS/prefilter_stats.txt -t dna -j $CPU $SCAF #finding statistics about your assembly, checking before/after filtering 
-busco -i $SCAF -m genome -l eudicotyledons_odb12 -c $CPU -o BUSCO_$(basename "$REF") --out_path $STATS #check for completeness of your assembly, before and after filtering 
+busco -i $SCAF -m genome -l eudicotyledons_odb12 -c $CPU -o BUSCO_$(basename "$SCAF") --out_path $STATS# --download_path $BUSCO #check for completeness of your assembly, before and after filtering 
 
 >&2 echo"### Step 1.2: Filter for 50kb and check stats"
 seqkit seq -m 50000 -o $Min50 -t dna -j $CPU $SCAF
 seqkit stats -a -o $STATS/50kb_filter_stats.txt -t dna -j $CPU $Min50
-busco -i $Min50 -m genome -l eudicotyledons_odb12 -c $CPU -o BUSCO_$(basename "$Min50") --out_path $STATS
+busco -i $Min50 -m genome -l eudicotyledons_odb12 -c $CPU -o BUSCO_$(basename "$Min50") --out_path $STATS# --download_path $BUSCO
 
 >&2 echo"### Step 1.2: Filter for 100kb and check stats"
 seqkit seq -m 100000 -o $Min100 -t dna -j $CPU $SCAF
 seqkit stats -a -o $STATS/100kb_filter_stats.txt -t dna -j $CPU $Min100
-busco -i $Min100 -m genome -l eudicotyledons_odb12 -c $CPU -o BUSCO_$(basename "$Min100") --out_path $STATS
+busco -i $Min100 -m genome -l eudicotyledons_odb12 -c $CPU -o BUSCO_$(basename "$Min100") --out_path $STATS# --download_path $BUSCO
 
