@@ -1,15 +1,4 @@
 #!/bin/bash
-#SBATCH --job-name=scaffolding_stats	                    # Job name
-#SBATCH --partition=highmem_p		                        # Partition (queue) name
-#SBATCH --ntasks=1			                            # Single task job
-#SBATCH --cpus-per-task=32		                        # Number of cores per task - match this to the num_threads used by BLAST
-#SBATCH --mem=250gb			                            # Total memory for job
-#SBATCH --time=72:00:00  		                        # Time limit hrs:min:sec
-#SBATCH --output=/scratch/ac05869/err_out/%x_%j.out	# Location of standard output and error log files (replace cbergman with your myid)
-#SBATCH --error=/scratch/ac05869/err_out/%x_%j.err		# Standard error log, e.g., testBowtie2_12345.err
-#SBATCH --mail-user=ac05869@uga.edu                    # Where to send mail (replace cbergman with your myid)
-#SBATCH --mail-type=BEGIN,END,FAIL                            # Mail events (BEGIN, END, FAIL, ALL)
-
 
 REF='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa' #the contig file
 HIC='gel-an_1438201_S3HiC' #same as mapping pipeline script
