@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=yahs_final_asm	                    # Job name
+#SBATCH --job-name=yahs_28apr	                    # Job name
 #SBATCH --partition=highmem_p		                        # Partition (queue) name
 #SBATCH --ntasks=1			                            # Single task job
 #SBATCH --cpus-per-task=32		                        # Number of cores per task - match this to the num_threads used by BLAST
@@ -35,15 +35,14 @@ YAHS='/scratch/ac05869/gese_final_yahs/yahs'
 MAPQ_FILTER=10
 
 #modules
-module load BWA/0.7.17-GCCcore-11.3.0 #will create indeces for reference and map reads against reference 
+module load BWA/0.7.17-GCCcore-11.3.0 #will create indeces for reference and map reads against reference
 module load SAMtools/1.16.1-GCC-11.3.0 #will also do index of the genome to be used in this pipeline and yahs
 module load picard/3.2.0-Java-17
 
->&2 echo "### Step 0: Check output directories’ existence & create them as
-needed"
+>&2 echo "### Step 0: Check output directories’ existence & create them as needed"
 [ -d $RAW_DIR ] || mkdir -p $RAW_DIR
 [ -d $FILT_DIR ] || mkdir -p $FILT_DIR
-[ -d $TMP_DIR ] || mkdir -p $TMP_DIR
+[ -d $TMP_DIR ] || mkdir -p $TMP_DIR 
 [ -d $PAIR_DIR ] || mkdir -p $PAIR_DIR
 [ -d $YAHS ] || mkdir -p $YAHS
 
@@ -61,7 +60,7 @@ bwa index -a bwtsw -p $ASM $REF
 >&2 echo "### Step 1.A: FASTQ to BAM (1st)"
 bwa mem -t $CPU $REF $IN_DIR/${HIC}_R1.fastq.gz | samtools view -@ $CPU -Sb - > $RAW_DIR/${HIC}_1.bam
 
->&2 echo "### Step 1.B: FASTQ to BAM (2nd)"
+#>&2 echo "### Step 1.B: FASTQ to BAM (2nd)"
 bwa mem -t $CPU $REF $IN_DIR/${HIC}_R2.fastq.gz | samtools view -@ $CPU -Sb - > $RAW_DIR/${HIC}_2.bam
 
 #####
