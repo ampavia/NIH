@@ -1,27 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=contact_matrix	                    # Job name
-#SBATCH --partition=highmem_p		                        # Partition (queue) name
-#SBATCH --ntasks=1			                            # Single task job
-#SBATCH --cpus-per-task=32		                        # Number of cores per task - match this to the num_threads used by BLAST
-#SBATCH --mem=250gb			                            # Total memory for job
-#SBATCH --time=72:00:00  		                        # Time limit hrs:min:sec
-#SBATCH --output=/scratch/ac05869/err_out/%x_%j.out	# Location of standard output and error log files (replace cbergman with your myid)
-#SBATCH --error=/scratch/ac05869/err_out/%x_%j.err		# Standard error log, e.g., testBowtie2_12345.err
-#SBATCH --mail-user=ac05869@uga.edu                    # Where to send mail (replace cbergman with your myid)
-#SBATCH --mail-type=BEGIN,END,FAIL                            # Mail events (BEGIN, END, FAIL, ALL)
 
-REF='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa' #the contig file
-HIC='gel-an_1438201_S3HiC' #same as mapping pipeline script
-PREF='gese_v1.org_filter.asm.yahs_100kb_filter' #prefix of the output file
-YAHS='/scratch/ac05869/gese_final_yahs/yahs' #same as mapping pipeline output directory
-JBAT='/scratch/ac05869/gese_final_yahs/juicebox'
-STATS='/scratch/ac05869/gese_final_yahs/yahs/filter'
+PREF='gese_v1.org_filter.asm.yahs_scaffolds_final_100kb_filter.yahs' #prefix of the output file
+JBAT='/scratch/ac05869/gese_final_yahs/juicebox2'
 CPU=32
-SCAF='/scratch/ac05869/gese_final_yahs/yahs/gese_v1.org_filter.asm.yahs_scaffolds_final.fa'
-Min50='/scratch/ac05869/gese_final_yahs/yahs/filter/gese_v1.org_filter.asm.yahs_scaffolds_final_50kb_filter.fa'
-Min100='/scratch/ac05869/gese_final_yahs/yahs/filter/gese_v1.org_filter.asm.yahs_scaffolds_final_100kb_filter.fa'
-AGP='/home/ac05869/NIH/FastaToAGPFileFormatConverter.pl'
-BIN='gese_v1.org_filter.asm.yahs.bin'
+REF='/scratch/ac05869/gese_final_yahs/scaf_assembly/gese_v1.org_filter.asm.yahs_scaffolds_final_100kb_filter.fa'
+ASM='gese_v1.org_filter.asm.yahs_scaffolds_final_100kb_filter.fa'
+YAHS='/scratch/ac05869/gese_final_yahs/yahs2'
 
 [ -d $JBAT ] || mkdir -p $JBAT
 [ -d $STATS ] || mkdir -p $STATS 
@@ -30,8 +14,14 @@ module load YaHS/1.2.2-GCC-11.3.0
 module load Juicebox/1.9.9
 module load SAMtools/1.16.1-GCC-11.3.0
 
->&2 echo "### Step 0: generate .agp file for the filtered scaffolded .fa"
-perl ${AGP} -i ${Min100} -o ${YAHS}/${PREF}_scaffolds_final.agp -a scaffold
+>&2 echo "### Step 1: run yahs"
+yahs -o ${YAHS}/${PREF} ${REF} ${YAHS}/${HIC}.bam
+#####
+#The outputs include several AGP format files and a FASTA format file.
+#The *_inital_break_[0-9]{2}.agp AGP files are for initial assembly error corrections.
+#The *_r[0-9]{2}.agp and related *_r[0-9]{2}_break.agp AGP files are for scaffolding results in each round.
+#The *_scaffolds_final.agp and *_scaffolds_final.fa files are for the final scaffolding results.
+#####
 
 >&2 echo "### Step 1: generate HiC contact map"
 (juicer pre ${YAHS}/${BIN} ${YAHS}/${PREF}_scaffolds_final.agp ${REF}.fai \
