@@ -1,0 +1,102 @@
+---
+title: "pcu_v0_cros_v3_genespace"
+author: "Anne Pavia"
+date: "2025-05-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#devtools::install_github("jtlovell/GENESPACE")
+#library(GENESPACE)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(readxl)
+library(RColorBrewer)
+```
+
+#Pathway genes
+```{r}
+path <- read_delim("/scratch/ac05869/nih/cath_pathway/cro_leaf_MIA_genes.csv", delim = ',')
+path$gene_ID <- gsub("\\.\\d+$", "", path$gene_ID)
+path$gene_ID <- gsub("-", "_", path$gene_ID)
+head(path)
+
+path <- path %>% mutate(cro_v3_gene = gene_ID) %>%
+  select("cro_v3_gene", "tag", "function", "order", "segment") 
+
+head(path)
+
+```
+
+#Annotation files
+```{r}
+## Read in Functional Annotation file - This caused problems when using read.table() by causing incorrect number of lines.
+
+anno_cro <- read.delim(file = "/scratch/ac05869/nih/Cro_v3_genome/cro_v3.functional_annotation.txt", header = FALSE, sep = "\t", col.names = c("cro_v3_gene", "cro_annotation"))
+#Remove transcript syntax
+anno_cro$cro_v3_gene <- gsub("\\.\\d+$", "", anno_cro$cro_v3_gene)
+dim(anno_cro)
+#deduplicate
+anno_cro <- unique(anno_cro, incomparables = F)
+head(anno_cro)
+```
+
+#Syntenic hits
+```{r}
+synHits1_full <- read_delim("/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/pcu_v0_h1_vs_cro_v3.synHits.txt.gz", delim = "\t", col_types = cols())
+synHits1 <- synHits1_full %>%
+  select('id2', 'id1', 'chr1', 'sameOG', 'regID', 'regID', 'blkID') %>%
+  rename(cro_v3_gene = id2) %>%
+  full_join(path, by = 'cro_v3_gene') %>%
+  left_join(anno_cro, by = 'cro_v3_gene') %>%
+  select('cro_v3_gene', 'id1', 'chr1', 'sameOG', 'cro_annotation', 'tag', 'function', 'order', 'segment', 'regID', 'regID', 'blkID') %>%
+  distinct() %>%
+  rename(pcu_v0_h1 = id1) %>%
+  rename(chr_hap1 = chr1)
+dim(synHits1)
+head(synHits1)
+write_delim(synHits1, "/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/Annotated_pcu_v0_h1_vs_cro_v3.synHits.txt", delim = "\t")
+
+synHits2_full <- read_delim("/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/pcu_v0_h2_vs_cro_v3.synHits.txt.gz", delim = "\t", col_types = cols())
+synHits2 <- synHits2_full %>%
+  select('id2', 'id1', 'chr1', 'sameOG', 'regID', 'regID', 'blkID') %>%
+  rename(cro_v3_gene = id2) %>%
+  full_join(path, by = 'cro_v3_gene') %>%
+  left_join(anno_cro, by = 'cro_v3_gene') %>%
+  select('cro_v3_gene', 'id1', 'chr1', 'sameOG', 'cro_annotation', 'tag', 'function', 'order', 'segment', 'regID', 'regID', 'blkID') %>%
+  distinct() %>%
+  rename(pcu_v0_h2 = id1) %>%
+  rename(chr_hap2 = chr1)
+write_delim(synHits2, "/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/Annotated_pcu_v0_h2_vs_cro_v3.synHits.txt", delim = "\t")
+
+dim(synHits2)
+head(synHits2)
+```
+
+```{r}
+merged_synHits <- full_join(synHits1, synHits2, by = "cro_v3_gene") %>%
+  select('cro_v3_gene', 'pcu_v0_h1', 'chr_hap1', 'pcu_v0_h2', 'chr_hap2', 'sameOG.x', 'sameOG.y', 'cro_annotation.x') %>%
+  full_join(path, by = 'cro_v3_gene') %>%
+  rename(sameOG_hap1 = sameOG.x)%>%
+  rename(sameOG_hap2 = sameOG.y) %>%
+  select('cro_v3_gene', 'pcu_v0_h1', 'chr_hap1', 'pcu_v0_h2', 'chr_hap2', 'sameOG_hap1', 'sameOG_hap2', 'cro_annotation.x', 'tag', 'function', 'order', 'segment')
+head(merged_synHits)
+write_delim(merged_synHits, "/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/Annotated_merged_synHits_cro_v3_vs_pcu_v0_h1_vs_pcu_v0_h2.synHits.txt", delim = "\t")
+
+```
+
+```{r}
+hap1_blast <- read_delim("/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/pcu_v0_h1_vs_cro_v3.allBlast.txt.gz", delim = "\t", col_types = cols())
+dim(hap1_blast)
+head(hap1_blast)
+
+hap2_blast <- read_delim("/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/pcu_v0_h2_vs_cro_v3.allBlast.txt.gz", delim = "\t", col_types = cols())
+dim(hap1_blast)
+head(hap1_blast)
+```
+

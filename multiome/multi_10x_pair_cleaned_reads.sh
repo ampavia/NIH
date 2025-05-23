@@ -19,18 +19,21 @@
 
 R2='/scratch/ac05869/10X_Multiome/KRT_leaf/raw_fastq/cutadapt_out'
 WD='/scratch/ac05869/10X_Multiome/KRT_leaf/raw_fastq'
-
+OUT1='/scratch/ac05869/10X_Multiome/KRT_leaf/KRT_AC_AE/gex_paired'
+OUT2='/scratch/ac05869/10X_Multiome/KRT_leaf/KRT_AD_AF/gex_paired'
+[ -d $OUT1 ] || mkdir -p $OUT1
+[ -d $OUT2 ] || mkdir -p $OUT2
 ml SeqKit/0.16.1
 
 cd $WD
 
 #AE
 seqkit pair -1 ./UMGC.220425.Aviti4_Run_123/KRT_AE_S2_R1_001.fastq.gz -2 $R2/KRT_AE_S2_R2_001.trim.fastq.gz \
--O ../KRT_AC_AE/gex_repaired
+-O $OUT1
 
 #AF
 seqkit pair -1 ./UMGC.220425.Aviti4_Run_123/KRT_AF_S3_R1_001.fastq.gz -2 $R2/KRT_AF_S3_R2_001.trim.fastq.gz \
--O ../KRT_AD_AF/gex_repaired
+-O $OUT2
 
 
 

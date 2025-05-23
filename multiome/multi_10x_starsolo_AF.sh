@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=KRT_AE_starsolo	# Job name
+#SBATCH --job-name=KRT_AF_starsolo	# Job name
 #SBATCH --partition=highmem_p		# Partition name (batch, highmem_p, or gpu_p)
 #SBATCH --ntasks=1			# Run job in single task, by default using 1 CPU core on a single node
 #SBATCH --cpus-per-task=24	 	# CPU core count per task, by default 1 CPU core per task
@@ -17,12 +17,12 @@
 #       Input: trimmed_reads.fastq
 #       Output: alignments.sam --> alignmnets.sorted.bam
 ################################################################################
-LIB='KRT_AE'
-WD='/scratch/ac05869/10X_Multiome/KRT_leaf/KRT_AC_AE'
+LIB='KRT_AF'
+WD='/scratch/ac05869/10X_Multiome/KRT_leaf/KRT_AD_AF'
 [ -d $WD ] || mkdir -p $WD
 cd $WD
-R1='/scratch/ac05869/10X_Multiome/KRT_leaf/KRT_AC_AE/gex_paired/KRT_AE_S2_R1_001.fastq.gz'
-R2='/scratch/ac05869/10X_Multiome/KRT_leaf/KRT_AC_AE/gex_paired/KRT_AE_S2_R2_001.trim.fastq.gz'
+R1='/scratch/ac05869/10X_Multiome/KRT_leaf/KRT_AD_AF/gex_paired/KRT_AF_S3_R1_001.fastq.gz'
+R2='/scratch/ac05869/10X_Multiome/KRT_leaf/KRT_AD_AF/gex_paired/KRT_AF_S3_R2_001.trim.fastq.gz'
 
 ml STAR/2.7.10b-GCC-11.3.0
 

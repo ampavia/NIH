@@ -16,10 +16,12 @@ LIB=`head -n ${SLURM_ARRAY_TASK_ID} ${INFILE} | cut -f 1 | tail -n 1`
 WD='/scratch/ac05869/10X_Multiome/KRT_leaf'
 cd $WD
 
-ml CellRanger-ARC/2.0.2
+ml CellRanger-ARC/2.0.2-QVupdate
 
-cellranger-arc count --id=$LIB \
+cellranger-arc count --id=${LIB}_CR-arc_count \
  --reference=./mitr_v1 \
- --libraries=./${LIB}/${LIB}.csv
+ --libraries=./${LIB}/${LIB}.csv \
+ --localcores=16 \
+ --localmem=300
  
  #sbatch --array 1-2 --export=INFILE=/scratch/ac05869/10X_Multiome/KRT_leaf/multiome_ID.txt ~/NIH/multiome/cellranger-arc_count.sh
