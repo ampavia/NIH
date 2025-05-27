@@ -23,16 +23,14 @@ OUT1='/scratch/ac05869/10X_Multiome/KRT_leaf/raw_fastq/AE_gex_paired'
 OUT2='/scratch/ac05869/10X_Multiome/KRT_leaf/raw_fastq/AF_gex_paired'
 [ -d $OUT1 ] || mkdir -p $OUT1
 [ -d $OUT2 ] || mkdir -p $OUT2
-ml SeqKit/0.16.1
-
 cd $WD
-
+ml SeqKit/0.16.1
 #AE
-seqkit pair -1 ./UMGC.220425.Aviti4_Run_123/KRT_AE_S2_R1_001.fastq.gz -2 $R2/KRT_AE_S2_R2_001.trim.fastq.gz \
+seqkit pair -1 ../UMGC.220425.Aviti4_Run_123/KRT_AE_S2_R1_001.fastq.gz -2 $R2/KRT_AE_S2_R2_001.trim.fastq.gz \
 -O $OUT1
 
 #AF
-seqkit pair -1 ./UMGC.220425.Aviti4_Run_123/KRT_AF_S3_R1_001.fastq.gz -2 $R2/KRT_AF_S3_R2_001.trim.fastq.gz \
+seqkit pair -1 ../UMGC.220425.Aviti4_Run_123/KRT_AF_S3_R1_001.fastq.gz -2 $R2/KRT_AF_S3_R2_001.trim.fastq.gz \
 -O $OUT2
 
 
