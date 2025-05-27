@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=KRT_pair_cleaned_reads		# Job name
+#SBATCH --job-name=pair_reads		# Job name
 #SBATCH --partition=batch		# Partition name (batch, highmem_p, or gpu_p)
 #SBATCH --ntasks=1			# Run job in single task, by default using 1 CPU core on a single node
 #SBATCH --cpus-per-task=5	 	# CPU core count per task, by default 1 CPU core per task
@@ -18,9 +18,9 @@
 ################################################################################
 
 R2='/scratch/ac05869/10X_Multiome/KRT_leaf/raw_fastq/cutadapt_out'
-WD='/scratch/ac05869/10X_Multiome/KRT_leaf/raw_fastq'
-OUT1='/scratch/ac05869/10X_Multiome/KRT_leaf/KRT_AC_AE/gex_paired'
-OUT2='/scratch/ac05869/10X_Multiome/KRT_leaf/KRT_AD_AF/gex_paired'
+WD='/scratch/ac05869/10X_Multiome/KRT_leaf/raw_fastq/err_out'
+OUT1='/scratch/ac05869/10X_Multiome/KRT_leaf/raw_fastq/AE_gex_paired'
+OUT2='/scratch/ac05869/10X_Multiome/KRT_leaf/raw_fastq/AF_gex_paired'
 [ -d $OUT1 ] || mkdir -p $OUT1
 [ -d $OUT2 ] || mkdir -p $OUT2
 ml SeqKit/0.16.1
