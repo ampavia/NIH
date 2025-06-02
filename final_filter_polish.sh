@@ -14,7 +14,7 @@ CPU=32
 WD='/scratch/ac05869/gese_final_yahs/gese_v2.asm'
 CONTIG='/scratch/ac05869/gese_final_yahs/gese_v2.asm/gese_v2.asm_JBAT.FINAL.fa'
 OUT='/scratch/ac05869/gese_final_yahs/gese_v2.asm/100kb'
-M100='/scratch/ac05869/gelsemium_yahs/gese_v2.asm/100kb/gese_v2.asm.fa'
+M100='/scratch/ac05869/gese_final_yahs/gese_v2.asm/100kb/gese_v2.asm.fa'
 [ -d $OUT ] || mkdir -p $OUT 
 
 module load SeqKit/2.9.0
@@ -27,7 +27,7 @@ export NUMEXPR_MAX_THREADS=$CPU
 
 # use for filtering 100kb
 #seqkit seq -m 100000 -t dna -j $CPU $CONTIG > $OUT/gese_v2.asm.fa
-seqkit stats -a -o $OUT/100kb_filter_stats.txt -t dna -j $CPU $M100
-busco -i $M100 -m genome -l eudicotyledons_odb12 -c $CPU -o BUSCO_100kb --out_path $WD
+seqkit stats -a -o $OUT/100kb_filter_stats.txt -t dna -j $CPU $OUT/gese_v2.asm.fa
+busco -i $OUT/gese_v2.asm.fa -m genome -l eudicotyledons_odb12 -c $CPU -o BUSCO_100kb --out_path $WD
 
 #sbatch ~/NIH/final_filter_polish.sh
