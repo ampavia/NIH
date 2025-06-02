@@ -119,4 +119,4 @@ perl $STATS $YAHS/${HIC}.bam > $YAHS/${HIC}.bam.stats
 #file.
 #####
 
-bash ~/NIH/yahs_filtered_asm.sh
+#bash ~/NIH/yahs_filtered_asm.sh
