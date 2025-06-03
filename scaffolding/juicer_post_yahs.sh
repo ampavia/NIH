@@ -10,19 +10,21 @@
 #SBATCH --mail-user=ac05869@uga.edu                    # Where to send mail (replace cbergman with your myid)
 #SBATCH --mail-type=BEGIN,END,FAIL                            # Mail events (BEGIN, END, FAIL, ALL)
 
-JBAT='/scratch/ac05869/gese_final_yahs/juicebox'
-OUT='/scratch/ac05869/gese_final_yahs/gese_v2.asm'
-PREF='gese_v1.org_filter.asm.yahs' #prefix of the files
-FINAL='gese_v2.asm'
-REF='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa' #the contig file
+JBAT='/scratch/ac05869/gese_final_yahs/juicebox' #Input directory. already exists
+OUT='/scratch/ac05869/gese_final_yahs/gese_v2.asm' #Final assembly output directory
+REF='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa' #the ref contig file
+PREF='gese_v1.org_filter.asm.yahs' #prefix of the files output by yahs
+FINAL='gese_v2.asm' #Final assembly ID
+[ -d $OUT ] || mkdir -p $OUT
+
 
 module load YaHS/1.2.2-GCC-11.3.0
 module load Juicebox/1.9.9
 
 echo "### Final step: generate final genome assembly file after manual curation with JuiceBox (JBAT)"
-## I do not want to keep the manual curation of the assembly, so I am using "${JBAT}/${PREF}_JBAT.assembly" instead of "${JBAT}/${PREF}_JBAT.review.assembly"
+## I do not want to keep the manual curation of the assembly, since it needed no adjustments, so I am using "${JBAT}/${PREF}_JBAT.assembly" instead of "${JBAT}/${PREF}_JBAT.review.assembly"
 ## the final output is ${JBAT}/${PREF}_JBAT.FINAL.agp and ${JBAT}/${PREF}_JBAT.FINAL.fa
 juicer post -o ${OUT}/${FINAL}_JBAT ${JBAT}/${PREF}_JBAT.assembly ${JBAT}/${PREF}_JBAT.liftover.agp ${REF}
 
 
-#sbatch ~/NIH/juicer_post_yahs.sh
+#sbatch ~/NIH/scaffolding/juicer_post_yahs.sh

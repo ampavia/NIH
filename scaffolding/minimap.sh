@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=minimap	                    # Job name
+#SBATCH --job-name=minimap_filtered_gese                 # Job name
 #SBATCH --partition=batch		                        # Partition (queue) name
 #SBATCH --ntasks=1			                            # Single task job
 #SBATCH --cpus-per-task=12		                        # Number of cores per task - match this to the num_threads used by BLAST
@@ -10,7 +10,7 @@
 #SBATCH --mail-user=ac05869@uga.edu                    # Where to send mail (replace cbergman with your myid)
 #SBATCH --mail-type=END,FAIL                            # Mail events (BEGIN, END, FAIL, ALL)
 
-WD="/scratch/ac05869/gese_final_yahs/minimap"                  #
+WD="/scratch/ac05869/gese_final_yahs/minimap/100kb_gese"                  #
 #if output directory doesn't exist, create it
 if [ ! -d $WD ]
 then
@@ -20,7 +20,7 @@ cd ${WD}
 
 module load minimap2/2.28-GCCcore-12.3.0
 
-minimap2 -x asm5 /scratch/ac05869/nih/Cro_v3_genome/cro_v3.asm.fa /scratch/ac05869/gese_final_yahs/juicebox/gese_v1.org_filter.asm.yahs_JBAT.FINAL.fa \
--secondary=no > ${WD}/cro_v3_vs_gese_v1_scaffolded.paf
+minimap2 -x asm5 /scratch/ac05869/nih/Cro_v3_genome/cro_v3.asm.fa /scratch/ac05869/gese_final_yahs/gese_v2.asm/100kb/gese_v2.asm.fa \
+-secondary=no > ${WD}/cro_v3_vs_gese_v2.paf
 
 #sbatch ~/NIH/minimap.sh

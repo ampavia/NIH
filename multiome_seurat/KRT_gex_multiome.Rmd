@@ -1,0 +1,1621 @@
+---
+title: "UGA kratom leaf sc analysis with mitr_v1.asm"
+author: "Anne Pavia"
+output:
+  html_document:
+    df_print: paged
+---
+paste in Terminal
+# setwd("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/wd")`
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/wd')
+```
+
+# packages 
+```{r}
+library(tidyverse)
+library(Seurat)
+library(readxl)
+library(RColorBrewer)
+library(rcartocolor)
+library(viridis)
+library(patchwork)
+library(showtext)
+library(ggpubr)
+showtext_auto(F) #This makes it so you can see the text in the graphs, but it saves the images weird to turn to FALSE before ggsave
+```
+# read data 
+```{r}
+AE_raw <- Read10X("../../KRT_AC_AE/KRT_AEGeneFull/raw/data_for_R/EM_EmptyDrops_Combined")
+AF_raw <- Read10X("../../KRT_AD_AF/KRT_AFGeneFull/raw/data_for_R/EM_EmptyDrops_Combined") 
+```
+
+# objects 
+```{r}
+AE <- CreateSeuratObject(counts = AE_raw, min.cells = 3, min.features = 200,
+                         project = "AE")
+
+AF <- CreateSeuratObject(counts = AF_raw, min.cells = 3, min.features = 200,
+                         project = "AF")
+```
+
+```{r}
+AE
+AF
+```
+#Plotting before trimming
+##AE
+```{r}
+VlnPlot(AE, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2, raster = FALSE)
+
+ggsave("../Results/R_output/AE_violin_plots.svg", height = 8, width = 8, bg = "white")
+ggsave("../Results/R_output/AE_violin_plots.png", height = 8, width = 8, bg = "white")
+```
+
+##AF
+```{r}
+VlnPlot(AF, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2, raster = FALSE)
+ggsave("../Results/R_output/AF_violin_plots.svg", height = 8, width = 8, bg = "white")
+ggsave("../Results/R_output/AF_violin_plots.png", height = 8, width = 8, bg = "white")
+```
+
+# Filtering 
+```{r}
+blank <- data.frame(
+  x = 1:10,
+  y = 1:10
+) %>% 
+  ggplot(aes(x = x, y = y)) +
+  theme_void()
+```
+
+## AE 
+```{r}
+AE_scatter <- AE@meta.data %>% 
+  ggplot(aes(x = nCount_RNA, y = nFeature_RNA)) +
+  geom_point() +
+  geom_vline(xintercept = 500, color = "red2") +
+  geom_vline(xintercept = 13000, color = "red2") +
+  geom_hline(yintercept = 400, color = "blue1") +
+  geom_hline(yintercept = 10000, color = "blue1") +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic()
+
+AE_hist1 <- AE@meta.data %>% 
+  ggplot(aes(x = nCount_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "red2") +
+  geom_vline(xintercept = 13000, color = "red2") +
+  scale_x_log10() +
+  theme_classic()
+
+AE_hist2 <- AE@meta.data %>% 
+  ggplot(aes(x = nFeature_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "blue1") +
+  geom_vline(xintercept = 10000, color = "blue1") +
+  scale_x_log10() +
+  theme_classic() +
+  coord_flip()
+
+AE_QC <- wrap_plots(
+  AE_hist1 + 
+    labs(tag = "(a)"), blank,
+  AE_scatter +
+    labs(title = "rep1"), AE_hist2,
+  nrow = 2, ncol = 2, 
+  widths = c(1, 0.25), 
+  heights = c(0.28, 1)
+)
+
+AE_QC
+ggsave("../Results/R_output/AE_filtering.svg", height = 4, width = 5, bg = "white")
+ggsave("../Results/R_output/AE_filtering.png", height = 4, width = 5, bg = "white")
+```
+
+```{r}
+AE_sub <- subset(AE, , subset = nFeature_RNA > 500 &
+                   nFeature_RNA < 10000 &
+                   nCount_RNA < 13000 &
+                   nCount_RNA > 500)
+
+AE_sub
+```
+
+## AF
+```{r}
+AF_scatter <- AF@meta.data %>% 
+  ggplot(aes(x = nCount_RNA, y = nFeature_RNA)) +
+  geom_point() +
+  geom_vline(xintercept = 500, color = "red2") +
+  geom_vline(xintercept = 13000, color = "red2") +
+  geom_hline(yintercept = 500, color = "blue1") +
+  geom_hline(yintercept = 10000, color = "blue1") +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic()
+
+AF_hist1 <- AF@meta.data %>% 
+  ggplot(aes(x = nCount_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "red2") +
+  geom_vline(xintercept = 13000, color = "red2") +
+  scale_x_log10() +
+  theme_classic()
+
+AF_hist2 <- AF@meta.data %>% 
+  ggplot(aes(x = nFeature_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "blue1") +
+  geom_vline(xintercept = 10000, color = "blue1") +
+  scale_x_log10() +
+  theme_classic() +
+  coord_flip()
+
+AF_QC <- wrap_plots(
+  AF_hist1 +
+    labs(tag = "(b)"), blank,
+  AF_scatter +
+    labs(title = "rep2"), AF_hist2,
+  nrow = 2, ncol = 2, 
+  widths = c(1, 0.25), 
+  heights = c(0.27, 1)
+)
+
+AF_QC
+ggsave("../Results/R_output/AF_filtering.svg", height = 4, width = 5, bg = "white")
+ggsave("../Results/R_output/AF_filtering.png", height = 4, width = 5, bg = "white")
+```
+
+```{r}
+AF_sub <- subset(AF, subset = nFeature_RNA > 500 &
+                   nFeature_RNA < 10000 &
+                   nCount_RNA < 13000 &
+                   nCount_RNA > 500)
+
+AF_sub
+```
+
+#Plotting after trimming
+##AE
+```{r}
+VlnPlot(AE_sub, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2, raster = FALSE)
+ggsave("../Results/R_output/AE_violin_plots.svg", height = 8, width = 8, bg = "white")
+ggsave("../Results/R_output/AE_trimmed_violin_plots.png", height = 8, width = 8, bg = "white")
+```
+
+##AF
+```{r}
+VlnPlot(AF_sub, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2, raster = FALSE)
+ggsave("../Results/R_output/AF_violin_plots.svg", height = 8, width = 8, bg = "white")
+ggsave("../Results/R_output/AF_trimmed_violin_plots.png", height = 8, width = 8, bg = "white")
+```
+## Summary Statistics
+```{r}
+summary(AE_sub$nFeature_RNA)
+summary(AE_sub$nCount_RNA)
+
+summary(AF_sub$nFeature_RNA)
+summary(AF_sub$nCount_RNA)
+```
+
+# Normalize & variable features 
+```{r}
+AE_sub <- NormalizeData(AE_sub, normalization.method = "LogNormalize", scale.factor = 10000)
+AF_sub <- NormalizeData(AF_sub, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+```{r}
+AE_sub <- FindVariableFeatures(AE_sub, selection.method = "vst", nfeatures = 3000)
+AF_sub <- FindVariableFeatures(AF_sub, selection.method = "vst", nfeatures = 3000)
+```
+## Save "dirty" RDS before doublet removal in case needed later
+
+```{r}
+saveRDS(AE_sub, file = "../Data/AE_seurat_pre-doublet_filter.rds")
+saveRDS(AF_sub, file = "../Data/AF_seurat_pre-doublet_filter.rds")
+
+
+#AE_sub <-readRDS(file = "../Data/AE_seurat_pre-doublet_filter.rds")
+#AF_sub <-readRDS(file = "../Data/AF_seurat_pre-doublet_filter.rds")
+```
+## Cluster each rep and check for outliers
+### Scale the Data
+```{r}
+AE_sub.genes <- rownames(AE_sub)
+AE_sub <- ScaleData(AE_sub, features = AE_sub.genes)
+
+AF_sub.genes <- rownames(AF_sub)
+AF_sub <- ScaleData(AF_sub, features = AF_sub.genes)
+```
+### PCA
+```{r}
+AE_sub$Run <- AE_sub@meta.data$orig.ident
+AE_sub <- RunPCA(AE_sub, npcs = 75, features = VariableFeatures(object = AE_sub), verbose = FALSE) # run PCA (principal component analysis)
+
+AF_sub$Run <- AF_sub@meta.data$orig.ident
+AF_sub <- RunPCA(AF_sub, npcs = 75, features = VariableFeatures(object = AF_sub), verbose = FALSE) # run PCA
+```
+
+```{r}
+#Elbow plot helps us quickly estimate/check for how many PC's to use for clustering
+ElbowPlot(AE_sub, ndims = 75)
+
+ElbowPlot(AF_sub, ndims = 75)
+```
+
+### Call Clusters
+```{r}
+AE_sub <- FindNeighbors(AE_sub, dims = 1:50)
+AE_sub <- FindClusters(AE_sub, resolution = 0.5) #resolution can be adjusted depending on how the cells cluster. Higher resolution will break the umap into more clusters
+AE_sub <- RunUMAP(AE_sub, dims = 1:50)
+
+AF_sub <- FindNeighbors(AF_sub, dims = 1:50)
+AF_sub <- FindClusters(AF_sub, resolution = 0.5)
+AF_sub <- RunUMAP(AF_sub, dims = 1:50)
+```
+### Make UMAP Plots
+I usally dont save this UMAP since I'm usually integrating later anyway. They look like they clustered well, so I don't need to adjust the resolution from 0.5
+```{r}
+UMAP1 <- DimPlot(AE_sub, reduction = "umap", label = T, label.size = 5, repel = T, split.by = "Run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  ) +
+  ggtitle("Grouped by Replicates\n")
+UMAP1
+
+
+UMAP2 <- DimPlot(AF_sub, reduction = "umap", label = T, label.size = 5, repel = T, split.by = "Run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  ) +
+  ggtitle("Grouped by Replicates\n")
+UMAP2
+```
+### Stat Check
+Check various stats to determine if there is an outlier for any of the clusters
+Are there any clusters which have more doublets than others?
+```{r}
+table(AE_sub$orig.ident)
+table(Idents(AE_sub), AE_sub$orig.ident)
+
+table(AF_sub$orig.ident)
+table(Idents(AF_sub), AF_sub$orig.ident)
+
+#AE_sub: 16 clusters
+#AF_sub:15 clusters
+```
+
+```{r}
+plot1 <- VlnPlot(AE_sub, features = c("nFeature_RNA"), pt.size = 0.5) + ggtitle("KRT_AE_sub - nFeature_RNA")
+plot2 <-VlnPlot(AE_sub, features = c("nCount_RNA"), pt.size = 0.5) + ggtitle("KRT_AE_sub - nCount_RNA")
+ggarrange(plot1, plot2, nrow = 2, ncol = 1, common.legend = TRUE, legend = "bottom")
+
+plot1
+ggsave("../Results/R_output/AE_nFeature_RNA_violin_plots_clustered.png", height = 8, width = 8, bg = "white")
+```
+```{r}
+plot2
+ggsave("../Results/R_output/AE_nCount_RNA_violin_plots_clustered.png", height = 8, width = 8, bg = "white")
+```
+
+
+```{r}
+plot1 <- VlnPlot(AF_sub, features = c("nFeature_RNA"), pt.size = 0.5) + ggtitle("KRT_AF_sub - nFeature_RNA")
+plot2 <-VlnPlot(AF_sub, features = c("nCount_RNA"), pt.size = 0.5) + ggtitle("KRT_AF_sub - nCount_RNA")
+ggarrange(plot1, plot2, nrow = 2, ncol = 1, common.legend = TRUE, legend = "bottom")
+
+plot1
+ggsave("../Results/R_output/AF_nFeature_RNA_violin_plots_clustered.png", height = 8, width = 8, bg = "white")
+```
+
+
+```{r}
+plot2
+ggsave("../Results/R_output/AF_nCount_RNA_violin_plots_clustered.png", height = 8, width = 8, bg = "white")
+```
+# Doublet Filtering - Run Doubletfinder
+Seurat Objects Pre-Processed, PCA and UMAP run
+```{r}
+library(DoubletFinder)
+#Code needs to be edited to work currently EVERY TIME in v4 but not v5
+#use "trace(paramSweep, edit = T)" and "trace(doubletFinder, edit = T)" - and edit $counts to @counts 
+```
+
+##AE doublets
+```{r}
+## pK Identification (no ground-truth) ---------------------------------------------------------------------------------------
+sweep.res.list_ai <- paramSweep(AE_sub, PCs = 1:50, sct = FALSE)
+sweep.stats_ai <- summarizeSweep(sweep.res.list_ai, GT = FALSE)
+bcmvn_ai <- find.pK(sweep.stats_ai)
+
+pK=as.numeric(as.character(bcmvn_ai$pK))
+BCmetric=bcmvn_ai$BCmetric
+pK_choose = pK[which(BCmetric %in% max(BCmetric))]
+
+# save plot (not ggplot)
+png(file = "../Results/R_output/AE_doubletfinder_pK_identification.png")
+
+par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
+plot(x = pK, y = BCmetric, pch = 16,type="b",
+col = "blue",lty=1)
+abline(v=pK_choose,lwd=2,col='red',lty=2)
+title("The BCmvn distributions")
+text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
+
+dev.off()
+
+## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
+homotypic.prop <- modelHomotypic(AE_sub@meta.data$seurat_clusters)
+nExp_poi <- round(0.046*nrow(AE_sub@meta.data))  ## Assuming 4.6% doublet formation rate - updated based on ~7-10k nuclei loaded and ~6,000 recovered. Change based on assumed doublet levels in the manual
+nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+```
+## AE doublet test
+Run DoubletFinder with varying classification stringencies
+Update pK to be pK choosen from above steps!
+```{r}
+AE_sub_doublet_test <- doubletFinder(AE_sub, PCs = 1:50, pN = 0.25, pK = 0.01, nExp = nExp_poi, reuse.pANN = FALSE, sct = FALSE)
+
+AE_sub_doublet_test
+
+#the DF.classifications_0.25 will need to change! The next two values are the pK you choose and the number of doublets found (nExp_poi)
+DimPlot(AE_sub_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = "DF.classifications_0.25_0.01_307")+theme(aspect.ratio = 1)
+sum(str_count(AE_sub_doublet_test$DF.classifications_0.25_0.01_307, "Doublet"))
+
+#  307 doublets
+
+#Save a UMAP of which cells were the doublets
+##Does this match your expectations from the Violin plots of the clusters we made earlier?
+ggsave("../Results/R_output/AE_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
+```
+
+
+##AF doublets
+```{r}
+## pK Identification (no ground-truth) ---------------------------------------------------------------------------------------
+sweep.res.list_ai <- paramSweep(AF_sub, PCs = 1:50, sct = FALSE)
+sweep.stats_ai <- summarizeSweep(sweep.res.list_ai, GT = FALSE)
+bcmvn_ai <- find.pK(sweep.stats_ai)
+
+pK=as.numeric(as.character(bcmvn_ai$pK))
+BCmetric=bcmvn_ai$BCmetric
+pK_choose = pK[which(BCmetric %in% max(BCmetric))]
+
+# save plot (not ggplot)
+png(file = "../Results/R_output/AF_doubletfinder_pK_identification.png")
+
+par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
+plot(x = pK, y = BCmetric, pch = 16,type="b",
+col = "blue",lty=1)
+abline(v=pK_choose,lwd=2,col='red',lty=2)
+title("The BCmvn distributions")
+text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
+
+dev.off()
+
+## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
+homotypic.prop <- modelHomotypic(AF_sub@meta.data$seurat_clusters)
+nExp_poi <- round(0.046*nrow(AF_sub@meta.data))  ## Assuming 4.6%% doublet formation rate - updated based on ~7-10k nuclei loaded and ~6,000 recovered. Change based on assumed doublet levels in the manual
+nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+```
+## AF doublet test
+Run DoubletFinder with varying classification stringencies
+Update pK to be pK choosen from above steps!
+```{r}
+AF_sub_doublet_test <- doubletFinder(AF_sub, PCs = 1:50, pN = 0.25, pK = 0.02, nExp = nExp_poi, reuse.pANN = FALSE, sct = FALSE)
+
+AF_sub_doublet_test
+
+#the DF.classifications_0.25 will need to change! The next two values are the pK you choose and the number of doublets found (nExp_poi)
+DimPlot(AF_sub_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = "DF.classifications_0.25_0.02_275")+theme(aspect.ratio = 1)
+sum(str_count(AF_sub_doublet_test$DF.classifications_0.25_0.02_275, "Doublet"))
+
+#doublets
+
+#Save a UMAP of which cells were the doublets
+##Does this match your expectations from the Violin plots of the clusters we made earlier?
+ggsave("../Results/R_output/AF_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
+```
+## Filter Doublets
+```{r}
+#AE
+AE_clean <- subset(AE_sub_doublet_test, subset = DF.classifications_0.25_0.01_307 == "Singlet") 
+AE_clean # 6376 cells
+#AF
+AF_clean <- subset(AF_sub_doublet_test, subset = DF.classifications_0.25_0.02_275 == "Singlet") 
+AF_clean # 5706 cells
+#take note of number of doublets that were filtered out. 
+```
+### Save RDS Object of cleaned data
+```{r}
+saveRDS(AE_clean, file = "../Data/AE_seurat_doublet_filter.rds")
+saveRDS(AF_clean, file = "../Data/AF_seurat_doublet_filter.rds")
+
+
+#AE_sub_doublet_test <-readRDS(file = "../Data/AE_seurat_doublet_filter.rds")
+#AE_sub_doublet_test <-readRDS(file = "../Data/AF_seurat_doublet_filter.rds")
+```
+
+### Summary Statistics Cleaned Data: Number of Genes  
+```{r}
+summary(AE_clean$nFeature_RNA)
+summary(AE_clean$nCount_RNA)
+
+summary(AF_clean$nFeature_RNA)
+summary(AF_clean$nCount_RNA)
+```
+
+# Re-Clustering Cleaned Data 
+## Notes
+```{r}
+#Now that we have a clean dataset we need to re-cluster things to account for the removal of doublets 
+#We can either re-run the above clustering steps for single samples OR we can integrate our replicates together at the same time
+```
+
+## Normalize the Data
+```{r}
+#Default = LogNormalize
+AE_clean <- NormalizeData(AE_clean)
+AF_clean <- NormalizeData(AF_clean)
+```
+
+# Integrate 
+```{r}
+RNA.list <- list(AE_clean, AF_clean)
+
+features <- SelectIntegrationFeatures(object.list = RNA.list, nfeatures = 3000)
+
+anchors <- FindIntegrationAnchors(object.list = RNA.list, anchor.features = features) 
+
+KRT_RNA <- IntegrateData(anchorset = anchors)
+```
+
+# Scale data 
+```{r}
+DefaultAssay(KRT_RNA) <- "integrated"
+KRT_RNA <- ScaleData(KRT_RNA, verbose = F)
+
+KRT_RNA@meta.data$run <- KRT_RNA@meta.data$orig.ident
+
+KRT_RNA@meta.data %>% 
+  group_by(run) %>% 
+  dplyr::count()
+
+KRT_RNA
+```
+
+# PCA
+```{r}
+KRT_RNA <- RunPCA(KRT_RNA, verbose = FALSE, npcs = 50) # run PCA
+
+DimPlot(KRT_RNA, reduction = "pca", cols = brewer.pal(8, "Set2")[c(1:3)],
+        split.by = "run", group.by = "run") +
+theme(
+  legend.position = "none"
+)
+```
+```{r}
+#Elbow plot helps us quickly estimate/check for how many PC's to use for clustering
+ElbowPlot(KRT_RNA, ndims = 50)
+```
+# UMAP
+```{r}
+KRT_RNA <- RunUMAP(KRT_RNA, dims = 1:30, 
+                    min.dist = 0.001, repulsion.strength = 1, n.neighbors = 15, spread = 5) 
+
+KRT_RNA <- FindNeighbors(KRT_RNA, reduction = "pca", dims = 1:50)
+KRT_RNA <- FindClusters(KRT_RNA, resolution = 0.5)
+```
+## Save RDS Object from Integrated, scaled, clustered data
+```{r}
+#saveRDS(KRT_RNA, file = "../Data/KRT_AE_AF_integrated.rds")
+
+KRT_RNA <-readRDS(file = "../Data/KRT_AE_AF_integrated.rds")
+```
+
+```{r}
+UMAP_RNA <- DimPlot(KRT_RNA, reduction = "umap", 
+                 label = T, label.size = 5, repel = T) + 
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black"),
+    legend.position = "none"
+  )
+
+UMAP_RNA
+ggsave("../Results/R_output/UMAP_RNA.svg", height = 3, width = 3, bg = "white")
+ggsave("../Results/R_output/UMAP_RNA.png", height = 3, width = 3, bg = "white")
+```
+
+## Check replicates 
+```{r}
+UMAP_by_rep <- DimPlot(KRT_RNA, reduction = "umap", label = T, label.size = 5, repel = T, split.by = "run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black"),
+    legend.position = "none"
+  ) +
+  ggtitle("Grouped by replicates\n")  
+  
+UMAP_by_rep
+ggsave("../Results/R_output/UMAP_RNA_by_rep.svg", height = 3, width = 7.5, bg = "white")
+ggsave("../Results/R_output/UMAP_RNA_by_rep.png", height = 3, width = 7.5, bg = "white")
+```
+## Stats - Integrated Clusters
+```{r}
+summary(KRT_RNA$nFeature_RNA)
+summary(KRT_RNA$nCount_RNA)
+
+#Cells in each cluster
+table(Idents(KRT_RNA))
+
+# Cells in each replicate
+table(KRT_RNA$orig.ident)
+
+#How does cluster membership vary by replicate?
+table(Idents(KRT_RNA), KRT_RNA$orig.ident)
+KRT_RNA
+```
+
+# Create Matrices
+## Pull annotation
+```{r}
+anno_mitr <- read.delim(file = "/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.functional_annotation.txt", header = FALSE, sep = "\t", col.names = c("gene_ID", "functional_annotation"))
+anno_mitr <- anno_mitr %>%
+  mutate(gene_ID = str_replace(gene_ID, "_", "-"))
+head(anno_mitr)
+dim(anno_mitr) #172819
+
+
+repr_gene_models <- read_delim("../../genome/mitr_v1.working_models.repr.gff3",
+                               delim = "\t", col_names = F)
+repr_loci <- repr_gene_models %>% 
+  dplyr::filter(X3 == "mRNA") %>% 
+  dplyr::select(X1, X4, X5, X7, X9) %>% 
+  separate(X9, c("ID", "Name"), sep = ";") %>% 
+  dplyr::select(-Name) %>% 
+  separate(ID, c("temp", "gene_ID"), sep = "=") %>% 
+  dplyr::select(-temp) %>% 
+  mutate(gene_ID = str_replace(gene_ID, "_", "-")) %>% 
+  dplyr::rename(
+    Chr = X1,
+    start = X4,
+    end = X5,
+    strand = X7
+  )
+
+head(repr_loci)
+dim(repr_loci) #103160
+
+anno <- anno_mitr %>%
+  right_join(repr_loci, by = "gene_ID", relationship = "one-to-one")%>% 
+  mutate(gene_ID = str_replace(gene_ID, "\\.[1-9]+$", "")) 
+dim(anno) #103160
+head(anno)
+```
+## Pull MIA genes 
+```{r}
+#Need to create a file that has your marker genes and some metadata (cell types, etc.). Change all underscores to either dashes or periods
+
+pathway_genes <- read.table("../Data/pathway_orthologs_kratom.txt", header = TRUE, sep = "\t")
+head(pathway_genes)
+pathway_genes <- pathway_genes %>%
+  mutate(gene_ID = pathway_genes$kratom.id) %>%
+  mutate(gene_ID = str_replace(gene_ID, "_", "-")) %>%
+  mutate(gene_ID = str_replace(gene_ID, "\\.[1-9]+$", "")) %>% 
+  mutate(tag = paste(gene.abbreviation, ":", kratom.id)) %>%
+  left_join(anno, by = "gene_ID")
+rev_pathway_genes <- pathway_genes[order(nrow(pathway_genes):1),]
+head(rev_pathway_genes)
+write_excel_csv(pathway_genes, "../Results/R_output/leaf_MIA_orthologs.csv")
+
+#Pull top blast goi from allwin
+goi <- read.table("../Data/allwin_goi_top_blast.txt", header = TRUE, sep = "\t")
+head(goi)
+goi <- goi %>%
+  mutate(gene_ID = goi$kratom.id) %>%
+  mutate(gene_ID = str_replace(gene_ID, "_", "-")) %>%
+  mutate(gene_ID = str_replace(gene_ID, "\\.[1-9]+$", "")) %>% 
+  mutate(tag = paste(gene.abbreviation, ":", gene_ID)) %>%
+  left_join(anno, by = "gene_ID")
+head(goi)
+rev_goi <- goi[order(nrow(goi):1),]
+head(rev_goi)
+#write_excel_csv(goi, "../Results/R_output/leaf_MIA_goi_blast.csv")
+```
+## Find Average Expression
+```{r}
+DefaultAssay(KRT_RNA) <- "RNA"
+
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(KRT_RNA)
+Idents(KRT_RNA) <- gsub(pattern = " ", replacement = "_", x = Idents(KRT_RNA))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(KRT_RNA) <- orig.levels
+
+cluster.averages <- AverageExpression(KRT_RNA, return.seurat = TRUE, )
+cluster.averages
+cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ])
+saveRDS(cluster_avg.data, file = "../Data/KRT_RNA_cluster_expression.rds")
+
+cluster_avg.data <- readRDS(file = "../Data/KRT_RNA_cluster_expression.rds")
+
+cluster_avg.data_anno <- cluster_avg.data %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_ID") %>%
+  left_join(anno, by = "gene_ID", relationship = "one-to-one")
+head(cluster_avg.data_anno)
+  
+#write.table(cluster_avg.data, file = "../Results/R_output/KRT_AE_AF_integrated_cluster_av_expression.txt", sep = "\t", quote = FALSE)
+
+cluster_avg.long <- cluster_avg.data %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_ID") %>%
+  pivot_longer(cols = as.character(c(0:16)), names_to = "cluster", values_to = "avg.exp")
+head(cluster_avg.long)
+```
+
+
+## Find Markers
+```{r}
+DefaultAssay(KRT_RNA) <- "RNA"
+
+KRT_RNA = JoinLayers(KRT_RNA)
+head(KRT_RNA)
+
+KRT_RNA_markers <- FindAllMarkers(KRT_RNA, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+#saveRDS(KRT_RNA_markers, file = "../Data/KRT_RNA_markers.rds")
+
+#KRT_RNA_markers<- readRDS(file = "../Data/KRT_RNA_markers.rds")
+
+KRT_RNA_markers_anno <- KRT_RNA_markers %>%
+  rename(gene_ID = gene) %>%
+  rownames_to_column(var = "rownames") %>%
+  select(!rownames) %>%
+  left_join(anno, by = "gene_ID") %>%
+  left_join(cluster_avg.long, by = c("gene_ID", "cluster"), relationship = "one-to-one") %>%
+  select(gene_ID, cluster, p_val, p_val_adj, avg_log2FC, pct.1, pct.2, avg.exp, functional_annotation, start,end,strand)
+KRT_RNA_markers_anno
+
+#write.table(KRT_RNA_markers_anno, "../Results/R_output/KRT_AE_AF_integrated_markers.txt", quote = FALSE, sep = "\t", row.names = FALSE)
+```
+
+
+# Heat map at cluster level (MIA genes)
+## Check genes in dotplot
+```{r}
+DefaultAssay(KRT_RNA) <- "RNA"
+dotplot_data <- DotPlot(KRT_RNA, features = unique(rev_pathway_genes$gene_ID))$data
+dotplot_data %>% 
+  inner_join(rev_pathway_genes %>% 
+               distinct(gene_ID, .keep_all = T), by = c("features.plot"="gene_ID")) %>%
+  ggplot(aes(x = id, y = reorder(tag,order, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster",
+       title = "UGA leaf multiome") + 
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"),
+        legend.position = "bottom")
+
+#Warning: Check for any "requested variables were not found" before finalizing
+
+
+ggsave("../Results/R_output/pathway_genes_best_orthologs.svg", height = 12, width = 10, bg = "white")
+ggsave("../Results/R_output/pathway_genes_best_orthologs.png", height = 12, width = 10, bg = "white")
+```
+### Compare pathway in other leaf datasets
+
+
+UGA leaf nuclei
+```{r}
+KRT_AA_AB <-readRDS(file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AA_AB_cleaned_integrated_seurat_20feb25.rds")
+DefaultAssay(KRT_AA_AB) <- "RNA"
+dotplot_data_UGA <- DotPlot(KRT_AA_AB, features = unique(rev_pathway_genes$gene_ID))$data
+dotplot_data_UGA %>% 
+  inner_join(rev_pathway_genes %>% 
+               distinct(gene_ID, .keep_all = T), by = c("features.plot"="gene_ID")) %>%
+  ggplot(aes(x = id, y = reorder(tag,order, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster",
+       title = "UGA Leaf Nuclei") + 
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"),
+        legend.position = "bottom")
+
+#Warning: Check for any "requested variables were not found" before finalizing
+
+
+ggsave("../Results/R_output/UGA_KRT_AA_AB_pathway_genes_best_orthologs.svg", height = 12, width = 10, bg = "white")
+ggsave("../Results/R_output/UGA_KRT_AA_AB_pathway_genes_best_orthologs.png", height = 12, width = 10, bg = "white")
+```
+
+```{r}
+KRT_AH_AI <-readRDS(file = "/scratch/ac05869/nih/kratom/seurat_analysis/mpi_kratom_leaf_mitr.v1/MIT_AH_AI_cleaned_integrated_seurat_14jan25.rds")
+DefaultAssay(KRT_AH_AI) <- "RNA"
+
+dotplot_data_mpi <- DotPlot(KRT_AH_AI, features = unique(rev_pathway_genes$gene_ID))$data
+dotplot_data_mpi %>% 
+  inner_join(rev_pathway_genes %>% 
+               distinct(gene_ID, .keep_all = T), by = c("features.plot"="gene_ID")) %>%
+  ggplot(aes(x = id, y = reorder(tag,order, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster",
+       title = "MPI Leaf Nuclei") + 
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"),
+        legend.position = "bottom")
+
+#Warning: Check for any "requested variables were not found" before finalizing
+
+
+ggsave("../Results/R_output/MPI_MIT_AH_AI_pathway_genes_best_orthologs.svg", height = 12, width = 10, bg = "white")
+ggsave("../Results/R_output/MPI_MIT_AH_AI_pathway_genes_best_orthologs.png", height = 12, width = 10, bg = "white")
+```
+
+
+## Remove genes
+Remove everything that has no expression based on the error messages from making the above plot
+View(allwin) ##see row in which the variable was not found in order to subset
+```{r}
+#Remove the genes that were not found (if any)
+
+subset <- str_trim(paste(scan("../Data/missing_pathway_genes.txt", what = "character", sep = c(",", " "))))
+
+pathway_subset <- pathway_genes %>%
+  filter(! as.character(kratom.id) %in% as.character(subset))
+
+(rev_pathway_subset <- pathway_subset %>% arrange(desc(order))) #another way to do it if your data has "order" column
+
+dotplot_data %>% 
+  inner_join(rev_pathway_subset %>% 
+               distinct(kratom.id, .keep_all = T), by = c("features.plot"="kratom.id")) %>%
+  mutate(tag = paste(gene.abbreviation, features.plot)) %>%
+  ggplot(aes(x = id, y = reorder(tag,order, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster") + 
+  theme_classic()
+```
+
+## Check GOI best hit genes in dotplot
+```{r}
+#Warning: Check for any "requested variables were not found" before finalizing
+#Mitsp.v1.03-2G022350
+subset <- str_trim(paste(scan("../Data/missing_pathway_genes.txt", what = "character", sep = c(",", " "))))
+
+goi <- goi %>%
+  filter(! as.character(gene_ID) %in% as.character(subset))
+rev_goi <- goi[order(nrow(goi):1),]
+head(rev_goi)
+
+dotplot_data2 <- DotPlot(KRT_RNA, features = unique(rev_goi$gene_ID))$data
+dotplot_data2 %>% 
+  inner_join(rev_goi %>% 
+               distinct(gene_ID, .keep_all = T), by = c("features.plot"="gene_ID")) %>%
+  ggplot(aes(x = id, y = reorder(tag,order, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster") + 
+   theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+
+ggsave("../Results/R_output/pathway_genes_best_blast.svg", height = 10, width = 12, bg = "white")
+ggsave("../Results/R_output/pathway_genes_best_blast.png", height = 10, width = 12, bg = "white")
+```
+
+
+
+### KRT specific cells 
+```{r}
+mitr_special <- anno %>% 
+  dplyr::filter(gene_ID == "Mitsp.v1.05-1G015600" | # DXS
+                  gene_ID == "Mitsp.v1.15-1G014960" | # DXR 
+                   gene_ID == "Mitsp.v1.07-1G017160") %>% # CMS
+  cbind(
+    symbol = c("DXS", "DXR", "CMS"),
+    cell_type = c("IPAP", "IPAP", "IPAP")
+  ) %>% 
+  dplyr::select(symbol, cell_type, gene_ID) 
+mitr_special
+```
+# Pull marker genes 
+```{r}
+markers <- read_delim("../Data/cell_annotation_markers_ath.txt", col_types = cols())
+head(markers)
+anno_markers <- markers %>%
+  mutate(gene_ID = str_replace(mitr_v1, "_", "-")) %>%
+  mutate(gene_ID = str_replace(gene_ID, "\\.[1-9]+$", "")) %>% 
+  left_join(anno, by = "gene_ID") %>%
+  filter(!duplicated(gene_ID) & !duplicated(gene_ID, fromLast = TRUE)) %>%
+  unique()
+
+head(anno_markers)
+write_excel_csv(anno_markers, "../Results/R_output/annotated_ath_marker_genes_in_kratom.csv")
+```
+
+
+
+## Cell type assignment heatmap
+```{r}
+DefaultAssay(KRT_RNA) <- "RNA"
+
+leaf_markers2 <- anno_markers %>% 
+  dplyr::select(symbol, cell_type, gene_ID, functional_annotation, Chr) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.08-2G000200") == F) %>% 
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.08-1G002300") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.04-1G014830") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.09-1G008490") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.01-1G001210") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.12-1G007060") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.22-1G006780") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.13-2G008520") == F)# %>% 
+#dplyr::filter(str_detect(gene_ID, "028970") == F) %>% 
+#  dplyr::filter(str_detect(gene_ID, "004670") == F)
+  
+Marker_dotplot <- DotPlot(KRT_RNA, features = unique(leaf_markers2$gene_ID))$data
+
+Marker_dotplot %>% 
+  inner_join(leaf_markers2 %>% 
+               distinct(gene_ID, .keep_all = T), by = c("features.plot"="gene_ID")) %>% 
+   mutate(cell_type2 = case_when(
+    str_detect(cell_type, "meso") ~ "M",
+    str_detect(cell_type, "cam|x|phl|com|ray|vessel|bundle|pith|cortex|sieve|vas") ~ "V",
+    str_detect(cell_type, "epi") ~ "E",
+    str_detect(cell_type, "guard") ~ "GC",
+    str_detect(cell_type, "IPAP") ~ "IP",
+    str_detect(cell_type, "idioblast")  ~ "I",
+    str_detect(cell_type, "early")  ~ "Pro"
+  )) %>% 
+  mutate(cell_type2 = factor(cell_type2, levels = c(
+    "M", "E", "GC", "V", "IP", "I", "Pro"
+  ))) %>% 
+  dplyr::filter(str_detect(cell_type2, "NA") == F) %>% 
+  mutate(cell_type3 = as.numeric(cell_type2)) %>% 
+  mutate(gene_ID = reorder(features.plot, -cell_type3)) %>% 
+  ggplot(aes(x = id, y = paste(cell_type2, symbol, Chr))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster") + 
+   theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+
+ggsave("../Results/R_output/cell_type_assignment_all.svg", height = 10, width = 12, bg = "white")
+ggsave("../Results/R_output/cell_type_assignment_all.png", height = 10, width = 12, bg = "white")
+```
+
+
+```{r}
+### Left off here
+
+
+Marker_dotplot_nice_df <- Marker_dotplot$data %>% 
+  mutate(gene_ID = row.names(.)) %>% 
+  full_join(leaf_markers2 %>% 
+              distinct(gene_ID, .keep_all = T),
+             by = "gene_ID") %>% 
+   mutate(cell_type2 = case_when(
+    str_detect(cell_type, "meso") ~ "M",
+    str_detect(cell_type, "cam|x|phl|com|ray|vessel|bundle|pith|cortex|sieve") ~ "V",
+    str_detect(cell_type, "epi") ~ "E",
+    str_detect(cell_type, "guard") ~ "GC",
+    str_detect(cell_type, "IPAP") ~ "IP",
+    str_detect(cell_type, "idioblast")  ~ "I",
+    str_detect(cell_type, "early")  ~ "Pro"
+  )) %>% 
+  dplyr::filter(str_detect(cell_type, "Unknown") == F) %>% 
+  mutate(cell_type2 = factor(cell_type2, levels = c(
+    "M", "E", "GC", "V", "IP", "I", "Pro"
+  ))) %>% 
+  mutate(cell_type3 = as.numeric(cell_type2)) %>% 
+  mutate(gene_ID = reorder(gene_ID, -cell_type3))  %>% 
+  mutate(id = factor(id, levels = c(
+    "0", "1", "3", "7", 
+    "2","5", 
+    "12",
+    "11", "6", "10", "14", "15",
+    "13", "8",
+    "4", "9"
+  ))) %>% 
+  dplyr::filter(is.na(avg.exp.scaled) == F)
+
+
+Marker_dot <- Marker_dotplot_nice_df %>% 
+  ggplot(aes(y = gene_ID, x = id)) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+```
+
+* Mesophyll: 0, 1, 3, 7
+* Epi: 2, 5
+* Guard: 12,
+* Vasculature: 11, 6, 10, 14, 15 
+* Un: 4, 9 
+
+* IPAP: 13
+* Idioblast: 8 
+
+```{r}
+leaf_cell_type_assignment <- data.frame(
+  cluster = c(0:15)
+) %>% 
+  mutate(cell_type = case_when(
+    cluster == 0 | 
+      cluster == 1 | 
+      cluster == 3 | 
+      cluster ==7  ~ "Mesophyll",
+    cluster == 2 | 
+      cluster == 5 ~ "Epidermis",
+    cluster == 12 ~ "Guard cells",
+    cluster == 11 |
+      cluster == 6 |
+      cluster == 10 |
+      cluster == 14 |
+      cluster == 15  ~ "Vasculature",
+    cluster == 13 ~ "IPAP",
+      cluster == 8 ~ "Idioblast",
+    T ~ "Unassigned"
+  )) %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Vasculature", 
+                              "IPAP", "Idioblast", "Unassigned"
+                            ))) %>% 
+  mutate(cluster = factor(cluster, levels = c(
+    "0", "1", "3", "7", 
+    "2","5", 
+    "12",
+    "11", "6", "10", "14", "15",
+    "13", "8",
+    "4", "9"
+  )))
+```
+
+
+```{r}
+Leaf_cell_type_strip <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "" )) +
+  geom_tile(aes(fill = cell_type)) +
+  scale_fill_manual(values = c(brewer.pal(6, "Accent"), "grey80")) +
+  guides(fill = guide_legend(nrow = 3)) +
+  labs(fill = "Cell type") +
+  theme_void() +
+  theme(
+    legend.position = "bottom" ,
+    text = element_text(size = 14)
+  )
+
+Leaf_cell_type_strip
+
+Leaf_cell_type_mkr_text <- Marker_dotplot_nice_df %>% 
+  dplyr::filter(id == 0) %>% 
+  ggplot(aes(x = "", y = gene_ID)) +
+  geom_text(aes(label = Symbol), fontface = "italic") +
+  theme_void()
+
+blank <- data.frame(
+  x = 0,
+  y = 0
+) %>% 
+  ggplot(aes(x, y)) +
+  theme_void()
+
+Marker_dot_strip <- wrap_plots(Marker_dot, Leaf_cell_type_mkr_text,
+          Leaf_cell_type_strip, blank,
+          heights = c(1, 0.03), 
+          widths = c(1, 0.2), nrow = 2, ncol = 2)
+
+Marker_dot_strip
+ggsave("../Results/R_output/Cell_type_assignment_plot.svg", height = 6, width = 7.5, bg = "white")
+ggsave("../Results/R_output/Cell_type_assignment_plot.png", height = 6, width = 7.5, bg = "white")
+```
+
+```{r}
+MIA_heatmap_color_strip <- wrap_plots(MIA_heatmap +
+                                        labs(tag = "(b)"), Leaf_cell_type_strip,
+           nrow = 2, heights = c(1, 0.02))
+
+MIA_heatmap_color_strip
+
+ggsave("../Results/R_output/MIA_at_cluster.svg", height = 7.5, width = 5, bg = "white")
+ggsave("../Results/R_output/MIA_at_cluster.png", height = 7.5, width = 5, bg = "white")
+```
+
+# UMAP with cell type info
+```{r}
+levels(KRT_RNA) <- c(
+   "0", "1", "3", "7", 
+    "2","5", 
+    "12",
+    "11", "6", "10", "14", "15",
+    "13", "8",
+    "4", "9"
+  )
+
+UMAP2 <- DimPlot(KRT_RNA, reduction = "umap", 
+                 label = T, label.size = 5, repel = T) + 
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black"),
+    legend.position = "none"
+  )
+
+UMAP2
+```
+```{r}
+leaf_assignment_graph <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "")) +
+  facet_wrap(~ cell_type, scales = "free", ncol = 2) +
+  geom_point(size = 5, aes(color = cluster)) +
+  geom_text(aes(label = cluster)) +
+  labs(x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    panel.grid = element_blank(),
+    text = element_text(size = 14, color = "black"),
+    axis.text.x = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA)
+    )
+
+RNA_umap <- wrap_plots(UMAP2 +
+                         labs(tag = "(a)"), leaf_assignment_graph, 
+           nrow = 2 , heights = c(1, 0.7))
+
+RNA_umap
+ggsave("../Results/R_output/UMAP_2.svg", height = 6, width = 3, bg = "white")
+ggsave("../Results/R_output/UMAP_2.png", height = 6, width = 3, bg = "white")
+```
+
+# Fraction of cell types of interest 
+```{r}
+KRT_RNA@meta.data <- KRT_RNA@meta.data %>% 
+  mutate(cell_type = case_when(
+    seurat_clusters == 0 | 
+      seurat_clusters == 1 | 
+      seurat_clusters == 3 | 
+      seurat_clusters ==7  ~ "Mesophyll",
+    seurat_clusters == 2 | 
+      seurat_clusters == 5 ~ "Epidermis",
+    seurat_clusters == 12 ~ "Guard cells",
+    seurat_clusters == 11 |
+      seurat_clusters == 6 |
+      seurat_clusters == 10 |
+      seurat_clusters == 14 |
+      seurat_clusters == 15  ~ "Vasculature",
+    seurat_clusters == 13 ~ "IPAP",
+      seurat_clusters == 8 ~ "Idioblast",
+    T ~ "Unassigned"
+  )) 
+
+
+KRT_RNA@meta.data %>% 
+  group_by(cell_type) %>% 
+  dplyr::count() %>% 
+  mutate(total = nrow(KRT_RNA@meta.data)) %>% 
+  mutate(percentage = n/total) %>% 
+  ungroup()
+
+KRT_multiome@meta.data %>% 
+  group_by(cell_type) %>% 
+  dplyr::count() %>% 
+  mutate(total = nrow(KRT_multiome@meta.data)) %>% 
+  mutate(percentage = n/total) %>% 
+  ungroup()
+```
+```{r}
+RNA_by_rep <- KRT_RNA@meta.data %>% 
+  group_by(cell_type, run) %>% 
+  dplyr::count() %>% 
+  inner_join(
+    KRT_RNA@meta.data %>% 
+  group_by(run) %>% 
+  dplyr::count() %>% 
+  ungroup() %>% 
+  dplyr::rename(total = n), 
+  by = "run"
+  ) %>% 
+  mutate(percentage = n/total * 100) %>% 
+  ungroup() %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Vasculature", 
+                              "IPAP", "Idioblast", "Unassigned"
+                            ))) %>% 
+  mutate(cell_type = fct_rev(cell_type)) %>% 
+  mutate(Run = case_when(
+    run == "AE" ~ "Rep1",
+    run == "AF" ~ "Rep2",
+    run == "BD" ~ "Rep3"
+  )) %>% 
+  ggplot(aes(x = Run, y = percentage)) +
+  geom_bar(stat = "identity", aes(fill = cell_type)) +
+  scale_fill_manual(values = rev(c(brewer.pal(6, "Accent"), "grey80"))) +
+  labs(x = "", 
+       y = "% cells by cell type",
+       fill = "cell type") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  theme(axis.text.y = element_text(angle = 0, hjust = 1, color = "black")) +
+  coord_flip() 
+```
+
+```{r}
+multiome_proportions <- KRT_multiome@meta.data %>% 
+  group_by(cell_type) %>% 
+  dplyr::count() %>% 
+  mutate(total = nrow(KRT_multiome@meta.data)) %>% 
+  mutate(percentage = n/total) %>% 
+  ungroup() %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Vasculature", 
+                              "IPAP", "Idioblast", "Unassigned"
+                            ))) %>% 
+  mutate(cell_type = fct_rev(cell_type)) %>% 
+  ggplot(aes(x = "Multiome", y = percentage)) +
+  geom_bar(stat = "identity", aes(fill = cell_type)) +
+  scale_fill_manual(values = rev(c(brewer.pal(6, "Accent"), "grey80"))) +
+  labs(x = "", 
+       y = "% cells by cell type",
+       fill = "cell type") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  theme(axis.text.y = element_text(angle = 0, hjust = 1, color = "black")) +
+  coord_flip() 
+```
+
+
+```{r}
+wrap_plots(RNA_by_rep, multiome_proportions, nrow = 2, 
+           heights = c(1, 0.3))
+
+ggsave("../Results/R_output/Cell_proportions.svg", height = 2.3, width = 6.5, bg = "white")
+ggsave("../Results/R_output/Cell_proportions.png", height = 2.3, width = 6.5, bg = "white")
+```
+
+```{r}
+saveRDS(KRT_RNA, "../Results/R_output/KRT_RNA.Rds")
+```
+
+# Output figures 
+```{r}
+KRT_RNA <- readRDS("../Results/R_output/KRT_RNA.Rds")
+KRT_multiome <- readRDS("../Results/R_output/KRT_multiome.Rds")
+DefaultAssay(KRT_multiome) <- "RNA"
+```
+
+## Main 1 
+```{r}
+wrap_plots(
+  RNA_umap,
+  MIA_heatmap_color_strip,
+  combined_UMAPs, 
+  design = c("AF_sub
+              CC"),
+  heights = c(1, 0.3),
+  widths = c(0.9, 1)
+  )  
+
+ggsave("../../Multiome_figures/Figure1.svg", height = 10, width = 8, bg = "white")
+ggsave("../../Multiome_figures/Figure1.png", height = 10, width = 8, bg = "white")
+```
+
+## Sups 
+```{r}
+# wrap_plots(
+#   UMAP_by_rep +
+#     labs(tag = "(a)"),
+#   Marker_dot_strip,
+#   cell_proportions +
+#     labs(tag = "(c)"),
+#   nrow = 3, 
+#   heights = c(0.35, 1, 0.15)
+# )
+# 
+# ggsave("../../Multiome_figures/Sub_scRNA_2.svg", height = 10.5, width = 8, bg = "white")
+# ggsave("../../Multiome_figures/Sub_scRNA_2.png", height = 10.5, width = 8, bg = "white")
+```
+
+```{r}
+wrap_plots(
+  AE_QC,
+  AF_QC,
+  BD_QC,
+  ncol = 1
+) &
+  theme(title = element_text(size = 10))
+
+ggsave("../../Multiome_figures/Sub_scRNA_1.svg", height = 10.5, width = 6, bg = "white")
+ggsave("../../Multiome_figures/Sub_scRNA_1.png", height = 10.5, width = 6, bg = "white")
+```
+## TFs 
+```{r}
+TFs <- readRDS("../Data/MIA_genes_info.Rds")
+TFs <- TFs %>% 
+  filter(is.na(tag) == F) %>% 
+  filter(segment == "TF")
+
+TFs
+```
+
+```{r}
+TF_of_focus <- TFs %>% 
+  filter(str_detect(tag, "ZCT") == F) %>% 
+  mutate(LocusID = str_replace(cro_v3_gene, "_", "-")) %>% 
+  inner_join(repr_loci, by = "LocusID") %>% 
+  add_row(gene_ID = "KRT-03G006290.2", tag = "GATA1")
+
+TF_of_focus
+```
+```{r}
+TF_dot_data <- DotPlot(KRT_RNA, features = TF_of_focus$gene_ID)$data
+head(TF_dot_data)
+```
+```{r}
+TF_heatmap <- TF_dot_data%>% 
+  mutate(internal.tag = row.names(.)) %>% 
+  arrange(internal.tag) %>% 
+  mutate(gene_ID = case_when(
+    is.na(features.plot) ~ str_remove_all(internal.tag, "rna_"),
+    T ~ features.plot %>% as.character()
+  )) %>% 
+  inner_join(TF_of_focus, by = "gene_ID") %>%
+  mutate(id = factor(id, levels = c(
+    "0", "1", "3", "7", 
+    "2","5", 
+    "12",
+    "11", "6", "10", "14", "15",
+    "13", "8",
+    "4", "9"
+  ))) %>% 
+  ggplot(aes(y = tag, x = id)) +
+  geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  scale_size(breaks = c(10, 25, 50)) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"))) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg.\nExp.",
+       size = "% Exp.") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+wrap_plots(TF_heatmap, Leaf_cell_type_strip,
+           heights = c(1, 0.05), nrow = 2)
+
+ggsave("../Results/R_output/TF_at_cluster.svg", height = 4.5, width = 6, bg = "white")
+ggsave("../Results/R_output/TF_at_cluster.png", height = 4.5, width = 6, bg = "white")
+```
+
+## Supp. table for marker genes 
+```{r}
+leaf_markers3 <- leaf_markers %>% 
+  dplyr::select(cell_type, Symbol, TAIR, gene_ID, cro.v3) %>% 
+  #rbind(cro_special) %>% 
+  dplyr::filter(str_detect(gene_ID, "007040") == F) %>% 
+  dplyr::filter(str_detect(gene_ID, "004679") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "023500") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "008230") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "021030") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "029480") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "030870") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "021170") == F) %>% 
+  dplyr::filter(str_detect(gene_ID, "028970") == F) %>% 
+  dplyr::filter(str_detect(gene_ID, "004670") == F) %>% 
+  filter(gene_ID %in% Marker_dotplot_nice_df$gene_ID) %>% 
+  distinct(gene_ID, .keep_all = T) %>% 
+  dplyr::select(-gene_ID)
+  
+
+leaf_markers3
+```
+
+```{r}
+write_excel_csv(leaf_markers3, "../Results/R_output/leaf_marker3.csv")
+```
+
+# Expression table at cluster level  
+```{r}
+DefaultAssay(KRT_RNA) <- "RNA"
+KRT_RNA <- ScaleData(KRT_RNA)
+```
+
+```{r}
+CPM <- AverageExpression(object = KRT_RNA, slot = "data", group.by = "seurat_clusters")$RNA %>% 
+  as.data.frame() %>% 
+  mutate(gene_id = row.names(.)) %>% 
+  select(gene_id, 1:16)
+
+Z <- AverageExpression(object = KRT_RNA, slot = "scale.data", group.by = "seurat_clusters")$RNA %>% 
+  as.data.frame() %>% 
+  mutate(gene_id = row.names(.)) %>% 
+  select(gene_id, 1:16)
+
+write_excel_csv(CPM, "../Results/R_output/logCPM_table_at_cluster_level.csv")
+write_excel_csv(Z, "../Results/R_output/z_score_table_at_cluster_level.csv")
+```
+# Feature plots for TFs 
+```{r}
+TF_of_focus
+```
+
+```{r}
+ORCA3_FeaturePlot <- FeaturePlot(KRT_RNA, features = "KRT-06G029250.1", order = T) +
+  ggtitle("ORCA3") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, face = "italic"))
+
+ORCA4_FeaturePlot <- FeaturePlot(KRT_RNA, features = "KRT-06G029240.1", order = T) +
+  ggtitle("ORCA4") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, face = "italic"))
+
+MYC2_FeaturePlot <- FeaturePlot(KRT_RNA, features = "KRT-07G000280.1", order = T) +
+  ggtitle("MYC2") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, face = "italic"))
+
+GATA_FeaturePlot <- FeaturePlot(KRT_RNA, features = "KRT-03G006290.2", order = T) +
+  ggtitle("GATA1") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, face = "italic"))
+
+wrap_plots(ORCA3_FeaturePlot, ORCA4_FeaturePlot, 
+           MYC2_FeaturePlot, nrow = 1, 
+           design = "A#B#C", widths = c(1, 0.1, 1, 0.1, 1)) &
+  scale_color_gradientn(colours = c("grey90", brewer.pal(9, "YlGnBu"))) &
+  theme(legend.key.width = unit(0.7, "lines"))
+
+ggsave("../Results/R_output/TF_feature_plots.svg", height = 2.2, width = 6, bg = "white")
+ggsave("../Results/R_output/TF_feature_plots.png", height = 2.2, width = 6, bg = "white")
+```
+
+# Sub-cluster idioblast 
+```{r}
+idioblast_sub <- KRT_RNA %>% 
+  subset(seurat_clusters == 8)
+
+idioblast_sub <- FindVariableFeatures(idioblast_sub, nfeatures = 3000)
+idioblast_sub <- ScaleData(idioblast_sub)
+idioblast_sub <- RunPCA(idioblast_sub, features = VariableFeatures(object = idioblast_sub))
+
+idioblast_sub <- FindNeighbors(idioblast_sub, dims = 1:30)
+idioblast_sub <- FindClusters(idioblast_sub, resolution = 0.5)
+idioblast_sub <- RunUMAP(idioblast_sub, dims = 1:30,  min.dist = 0.001, repulsion.strength = 1, n.neighbors = 15, spread = 5)
+
+```
+
+```{r}
+idio_pca <- DimPlot(idioblast_sub, reduction = "pca") +
+  labs(x = "PC1",
+       y = "PC2") +
+  ggtitle("PCA")
+
+idio_umap <- DimPlot(idioblast_sub, reduction = "umap") +
+  labs(x = "UMAP dim1",
+       y = "UMAP dim2") +
+  ggtitle("UMAP")
+
+wrap_plots(idio_pca, idio_umap, nrow = 1, guides = "collect",
+           design = "A#B", widths = c(1, 0.1, 1)) &
+  scale_color_manual(values = brewer.pal(8, "Set2")) &
+  theme_bw() &
+  theme(axis.text = element_blank())
+
+ggsave("../Results/R_output/idioblast_subcluster.svg", width = 5, height = 2.5, bg = "white")
+ggsave("../Results/R_output/idioblast_subcluster.png", width = 5, height = 2.5, bg = "white")
+```
+## DE gene between sub-clusters 
+```{r}
+funct_anno <- read_delim(file = "../Data/cro_v3_anno/cro_v3.functional_annotation.txt",
+                         col_names = F) %>% 
+  mutate(gene_ID = str_replace(X1, "_", "-"))
+
+tail(funct_anno)
+```
+
+```{r}
+DE_btw_sub <- FindMarkers(idioblast_sub, ident.1 = 0, ident.2 = 1, only.pos = F,
+                         logfc.threshold = 0) %>% 
+  # filter(p_val_adj < 0.05) %>% 
+  mutate(gene_ID = row.names(.)) %>% 
+  inner_join(repr_loci, by = "gene_ID") %>% 
+  inner_join(funct_anno %>% 
+               select(gene_ID, X2), by = "gene_ID")
+
+DE_btw_sub
+```
+Photosynthesis and photorespiration genes are DE between two idioblast sub-clusters. 
+```{r}
+DE_btw_sub_annotate <-DE_btw_sub %>% 
+  mutate(rank = rank(avg_log2FC)) %>% 
+  filter(str_detect(gene_ID, "03G003540|06G024620|03G011090|05G028190")) %>% 
+  mutate(name = case_when(
+    str_detect(gene_ID, "03G003540") ~ "SS",
+    str_detect(gene_ID, "06G024620") ~ "THAS2",
+    str_detect(gene_ID, "03G011090") ~ "LHC Protein",
+    str_detect(gene_ID, "05G028190") ~ "Rubisco Activase"
+  ))
+
+DE_btw_sub_annotate
+```
+
+```{r}
+DE_btw_sub %>% 
+  mutate(rank = rank(avg_log2FC)) %>% 
+  mutate(A = case_when(
+    p_val_adj < 0.05 ~1 ,
+    T ~ 0.3
+  )) %>% 
+  ggplot(aes(x = rank, y = avg_log2FC))+
+  geom_point(alpha = 0.8, color = "grey90") + 
+  ggrepel::geom_text_repel(data = DE_btw_sub_annotate, aes(label = name), fontface = "italic") +
+  geom_point(data = DE_btw_sub_annotate, size = 3, shape = 21, color = "black", fill = NA) +
+  #scale_color_gradientn(colours = c("grey90", brewer.pal(9, "YlGnBu")),
+  #                     limits = c(0, 30)) +
+  scale_alpha_identity() +
+  labs(x = "rank log2FC",
+       y = "log2FC") +
+  theme_classic()
+
+ggsave("../Results/R_output/idioblast_sub_DE.svg", width = 5, height = 2.5, bg = "white")
+ggsave("../Results/R_output/idioblast_sub_DE.png", width = 5, height = 2.5, bg = "white")
+```
+
+```{r}
+DE_btw_sub %>% 
+  filter(p_val_adj < 0.05) %>% 
+  arrange(-avg_log2FC)
+```
+## Feature plots at subclusters 
+```{r}
+SS_FeaturePlot <- FeaturePlot(idioblast_sub, features = "KRT-03G003540.1", order = T) +
+  ggtitle("SS") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, face = "italic"))
+
+THAS2_FeaturePlot <- FeaturePlot(idioblast_sub, features = "KRT-06G024620.2", order = T) +
+  ggtitle("THAS2") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, face = "italic"))
+
+ 
+LHC_FeaturePlot <- FeaturePlot(idioblast_sub, features = "KRT-03G011090.1", order = T) +
+  ggtitle("Light Harvesting\nComplex Protein") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, face = "italic"))
+
+RBA_FeaturePlot <- FeaturePlot(idioblast_sub, features = "KRT-05G028190.2", order = T) +
+  ggtitle("RUBISCO\nActivase") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, face = "italic"))
+
+D4H_FeaturePlot <- FeaturePlot(idioblast_sub, features = "KRT-06G013360.2", order = T) +
+  ggtitle("D4H") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, face = "italic"))
+
+DAT_FeaturePlot <- FeaturePlot(idioblast_sub, features = "KRT-02G001090.1", order = T) +
+  ggtitle("DAT") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, face = "italic"))
+
+wrap_plots(LHC_FeaturePlot, RBA_FeaturePlot,
+           SS_FeaturePlot, THAS2_FeaturePlot, 
+           D4H_FeaturePlot, DAT_FeaturePlot,
+           nrow = 5, 
+           design = "A#B
+                     ###
+                     C#D
+                     ###
+                     E#F", widths = c(1, 0.1), heights = c(1, 0.1, 1, 0.1, 1)) &
+  scale_color_gradientn(colours = c("grey90", brewer.pal(9, "YlGnBu")),
+                        #limit = c(0, 6), breaks = c(1, 2, 3, 4, 5
+                        )&
+  theme(legend.key.width = unit(0.7, "lines"),
+        legend.key.height = unit(0.8, "lines"),)
+
+ggsave("../Results/R_output/idioblast_sub_feature.svg", width = 5, height = 3, bg = "white")
+ggsave("../Results/R_output/idioblast_sub_feature.png", width = 5, height = 3, bg = "white")
+```
+
+
+# Figure for reviewer 
+```{r}
+module_genes <- read_csv("../Results/R_output/Gene_CoExp_Module.csv")
+head(module_genes)
+```
+
+```{r}
+idioblast_module_genes <- module_genes %>% 
+  filter(module == "8") %>% 
+  select(gene_ID, module) %>%
+  rename(LocusID = gene_ID) %>% 
+  inner_join(repr_loci, by = "LocusID")
+
+idioblast_module_genes_heat_data <- DotPlot(KRT_RNA, features = idioblast_module_genes$gene_ID)$data
+head(idioblast_module_genes_heat_data)
+```
+
+```{r}
+idioblast_module_genes_heat_data %>% 
+  ggplot(aes(y = features.plot, x = id)) +
+  # geom_point(aes(size = pct.exp, fill = avg.exp.scaled), shape = 21, color = "white") +
+  geom_tile(aes(fill = avg.exp.scaled)) + 
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(x = "Cluster",
+       y = NULL, 
+       fill = "Avg. Exp.",
+       size = "% Exp.") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        legend.position = "top",
+        legend.box = "verticle",
+        legend.key.height = unit(0.7, "lines"))
+
+ggsave("../Results/R_output/idioblast_module_heat.svg", height = 4, width = 3.25)
+ggsave("../Results/R_output/idioblast_module_heat.png", height = 4, width = 3.25)
+```
+```{r}
+idioblast_module_genes_heat_data %>% 
+  slice_max(order_by = avg.exp.scaled, n = 2)
+```

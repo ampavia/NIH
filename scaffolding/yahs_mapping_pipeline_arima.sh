@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=yahs_28apr	                    # Job name
+#SBATCH --job-name=mapping_call_yahs	                    # Job name
 #SBATCH --partition=highmem_p		                        # Partition (queue) name
 #SBATCH --ntasks=1			                            # Single task job
 #SBATCH --cpus-per-task=32		                        # Number of cores per task - match this to the num_threads used by BLAST
@@ -16,28 +16,21 @@
 #####
 WD='/scratch/ac05869/gese_final_yahs/assembly'
 CPU=32
-HIC='gel-an_1438201_S3HiC'
-IN_DIR='/scratch/ac05869/gelsemium_yahs/gel-an_1438200'
-REF='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa'
-ASM='gese_v1_organellar_filter.asm.fa'
-FAIDX='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa.fai'
-RAW_DIR='/scratch/ac05869/gese_final_yahs/raw'
-FILT_DIR='/scratch/ac05869/gese_final_yahs/filtered'
-LABEL='gese_v1.org_filter'
-FILTER='/home/ac05869/NIH/filter_five_end.pl'
-COMBINER='/home/ac05869/NIH/two_read_bam_combiner.pl'
-STATS='/home/ac05869/NIH/get_stats.pl'
-TMP_DIR='/scratch/ac05869/gese_final_yahs/temp'
-PAIR_DIR='/scratch/ac05869/gese_final_yahs/paired'
-YAHS='/scratch/ac05869/gese_final_yahs/yahs'
-#REP_LABEL=${LABEL}_rep1
-#MERGE_DIR='/path/to/final/merged/alignments/from/any/biological/replicates'
+HIC='gel-an_1438201_S3HiC'#HI-C file name
+IN_DIR='/scratch/ac05869/gelsemium_yahs/gel-an_1438200' #HI-C data directory
+LABEL='gese_v1.org_filter' #label for output files
+ASM='gese_v1_organellar_filter.asm.fa' #basename of ref contig asm
+REF='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa' #path to ref contig asm
+FAIDX='/scratch/ac05869/gese_final_yahs/assembly/gese_v1_organellar_filter.asm.fa.fai' #path to what index will be made
+RAW_DIR='/scratch/ac05869/gese_final_yahs/raw' #output dir 1
+FILT_DIR='/scratch/ac05869/gese_final_yahs/filtered' #output dir 2
+FILTER='/home/ac05869/NIH/scaffolding/filter_five_end.pl'
+COMBINER='/home/ac05869/NIH/scaffolding/two_read_bam_combiner.pl'
+STATS='/home/ac05869/NIH/scaffolding/get_stats.pl'
+TMP_DIR='/scratch/ac05869/gese_final_yahs/temp' #output dir 3
+PAIR_DIR='/scratch/ac05869/gese_final_yahs/paired' #output dir 4
+YAHS='/scratch/ac05869/gese_final_yahs/yahs' #final output dir for yahs
 MAPQ_FILTER=10
-
-#modules
-module load BWA/0.7.17-GCCcore-11.3.0 #will create indeces for reference and map reads against reference
-module load SAMtools/1.16.1-GCC-11.3.0 #will also do index of the genome to be used in this pipeline and yahs
-module load picard/3.2.0-Java-17
 
 >&2 echo "### Step 0: Check output directories’ existence & create them as needed"
 [ -d $RAW_DIR ] || mkdir -p $RAW_DIR
@@ -46,7 +39,13 @@ module load picard/3.2.0-Java-17
 [ -d $PAIR_DIR ] || mkdir -p $PAIR_DIR
 [ -d $YAHS ] || mkdir -p $YAHS
 
-cd $WD
+cd $WD #Where contig file exists
+
+#modules
+module load BWA/0.7.17-GCCcore-11.3.0 #will create indeces for reference and map reads against reference
+module load SAMtools/1.16.1-GCC-11.3.0 #will also do index of the genome to be used in this pipeline and yahs
+module load picard/3.2.0-Java-17
+
 
 ##Run only once. Skip if this step has been completed
 echo "### Step 0: Index reference"

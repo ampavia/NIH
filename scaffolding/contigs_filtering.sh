@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=asm_qc	                    # Job name
+#SBATCH --job-name=prefilter_contigs	                    # Job name
 #SBATCH --partition=highmem_p		                        # Partition (queue) name
 #SBATCH --ntasks=1			                            # Single task job
 #SBATCH --cpus-per-task=32		                        # Number of cores per task - match this to the num_threads used by BLAST
@@ -13,7 +13,7 @@
 NUMEXPR_MAX_THREADS=32
 REF='/scratch/ac05869/gelsemium_yahs/gese_v1.asm.fa'
 CPU=32
-CONTIG='/scratch/ac05869/gelsemium_yahs/filter_contigs'
+CONTIG='/scratch/ac05869/gelsemium_yahs/filter_contigs' #output dir
 M10='/scratch/ac05869/gelsemium_yahs/filter_contigs/min10_gese_v1.asm.filtered.fa'
 M50='/scratch/ac05869/gelsemium_yahs/filter_contigs/min50_gese_v1.asm.filtered.fa'
 [ -d $CONTIG ] || mkdir -p $CONTIG 

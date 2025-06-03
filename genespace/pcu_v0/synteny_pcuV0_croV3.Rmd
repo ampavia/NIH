@@ -5,19 +5,172 @@ date: "2025-05-21"
 output: html_document
 ---
 
+#load the prerequisite modules
+copy into terminal:
+```
+cd /scratch/ac05869/genespace_plcu_v1_cro_v3/wd
+eval "$(conda shell.bash hook)"
+conda activate genespace
+```
+
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_knit$set(root.dir = "/scratch/ac05869/genespace_plcu_v1_cro_v3/wd")
 ```
 
 ```{r}
-#devtools::install_github("jtlovell/GENESPACE")
-#library(GENESPACE)
+devtools::install_github("jtlovell/GENESPACE")
+library(GENESPACE)
 library(tidyverse)
 library(dplyr)
 library(ggplot2)
 library(readxl)
 library(RColorBrewer)
+#change the working directory path to match your own
+wd = "/scratch/ac05869/genespace_plcu_v1_cro_v3/wd"
+setwd(wd)
+path2mcscanx = '/home/ac05869/miniconda/envs/genespace/bin'
 ```
+
+# 7: Querying the output
+Currently, GENESPACE has three querying utilities: block coordinates, pan-genes and syntenic hits. In all cases, the input is the GENESPACE parameter object and a bed file with the coordinates of the region of interest.
+```{r}
+load(file = "/scratch/ac05869/gs_pcu_cro/wd/results/gsParams.rda")
+```
+
+## 7.4 Querying pan-genes
+```{r}
+pangenes <- query_pangenes(
+  gsParam,
+  refGenome = 'cro_v3',
+  showArrayMem = FALSE,
+  showNSOrtho = FALSE,
+  showUnPlacedPgs = FALSE
+)
+
+pangenes
+saveRDS(pangenes, file = "/scratch/ac05869/gs_pcu_cro/wd/pangenes/query_pangenes.rds")
+```
+
+## wrangle table to get syntelogs
+```{r}
+syntelogs <- pangenes %>%
+  select(pcu_v0_h1, pcu_v0_h2, cro_v3)%>%
+  rowwise() %>%
+  mutate(num.h1 = length(pcu_v0_h1))%>%
+  mutate(num.h2 = length(pcu_v0_h2))%>%
+  mutate(num.ref = length(cro_v3))
+syntelogs
+syntelogs <- syntelogs %>%
+  rowwise() %>%
+  mutate(cro_v3 = toString(cro_v3)) %>%
+  mutate(pcu_v0_h1 = toString(pcu_v0_h1)) %>%
+  mutate(pcu_v0_h2 = toString(pcu_v0_h2)) %>%
+  filter(cro_v3!= "") %>%
+  unique()
+syntelogs
+num_all <- dim(syntelogs)[1]
+
+cro_syntelogs <- syntelogs %>%
+  filter(pcu_v0_h1!= "" | pcu_v0_h2!= "")%>%
+  mutate(across(where(is.character), ~ gsub(",", ";", .))) 
+cro_syntelogs
+```
+##Ratios of synteny
+```{r}
+summary(cro_syntelogs$num.ref)
+summary(cro_syntelogs$num.h1)
+summary(cro_syntelogs$num.h2)
+```
+
+
+```{r}
+one_one_one <- syntelogs %>%
+  filter(num.ref == 1 & num.h1 == 1 & num.h2 == 1)
+one_one_one
+num1 <- dim(one_one_one)[1]
+num1/num_all #0.2629989
+
+one_two_one <- syntelogs %>%
+  filter(num.ref == 1 & num.h1 == 2 & num.h2 == 1)
+one_two_one
+num2 <- dim(one_two_one)[1]
+num2/num_all #0.04871324
+
+one_one_two <- syntelogs %>%
+  filter(num.ref == 1 & num.h1 == 1 & num.h2 == 2)
+one_one_two
+num3 <- dim(one_one_two)[1]
+num3/num_all #0.07059699
+
+(num2 + num3)/num_all #0.1193102
+
+one_two_two <- syntelogs %>%
+  filter(num.ref == 1 & num.h1 == 2 & num.h2 == 2)
+one_two_two
+num5 <- dim(one_two_two)[1]
+num5/num_all #0.2075893
+
+one_three_three <- syntelogs %>%
+  filter(num.ref == 1 & num.h1 == 3 & num.h2 == 3)
+one_three_three
+num6 <- dim(one_three_three)[1]
+num6/num_all #0.01028536
+
+two_one_one <- syntelogs %>%
+  filter(num.ref == 2 & num.h1 == 1 & num.h2 == 1)
+two_one_one
+num7 <- dim(two_one_one)[1]
+num7/num_all #0.000262605
+
+three_one_one <- syntelogs %>%
+  filter(num.ref == 3 & num.h1 == 1 & num.h2 == 1)
+three_one_one
+num8 <- dim(three_one_one)[1]
+num8/num_all #4.376751e-05
+
+one_one_three<- syntelogs %>%
+  filter(num.ref == 1 & num.h1 == 1 & num.h2 == 3)
+one_one_three
+num9 <- dim(one_one_three)[1]
+num9/num_all #0.004070378
+
+one_three_one<- syntelogs %>%
+  filter(num.ref == 1 & num.h1 == 3 & num.h2 == 1)
+one_three_one
+num9 <- dim(one_three_one)[1]
+num9/num_all #0.00122549
+
+
+one_zero<- syntelogs %>%
+  filter(num.ref == 1 & num.h1 == 0 & num.h2 == 0)
+one_zero
+num9 <- dim(one_zero)[1]
+num9/num_all #0.3416929
+
+
+one_zero<- syntelogs %>%
+  filter(num.ref == 1 & num.h1 == 1 & num.h2 == 0)
+one_zero
+num9 <- dim(one_zero)[1]
+num9/num_all #0.008841036
+
+
+one_zero<- syntelogs %>%
+  filter(num.ref == 0 & num.h1 == 1 & num.h2 == 1)
+one_zero
+num9 <- dim(one_zero)[1]
+num9/num_all #0.3756565
+
+one_zero<- syntelogs %>%
+  filter(num.ref == 1 & num.h1 > 2 || num.h2 > 2)
+one_zero
+num9 <- dim(one_zero)[1]
+num9/num_all #0.3756565
+```
+
+
+
 
 #Pathway genes
 ```{r}
@@ -26,77 +179,57 @@ path$gene_ID <- gsub("\\.\\d+$", "", path$gene_ID)
 path$gene_ID <- gsub("-", "_", path$gene_ID)
 head(path)
 
-path <- path %>% mutate(cro_v3_gene = gene_ID) %>%
-  select("cro_v3_gene", "tag", "function", "order", "segment") 
+path <- path %>% mutate(cro_v3 = gene_ID) %>%
+  select("cro_v3", "tag", "function", "order", "segment") 
 
 head(path)
-
 ```
 
 #Annotation files
 ```{r}
 ## Read in Functional Annotation file - This caused problems when using read.table() by causing incorrect number of lines.
 
-anno_cro <- read.delim(file = "/scratch/ac05869/nih/Cro_v3_genome/cro_v3.functional_annotation.txt", header = FALSE, sep = "\t", col.names = c("cro_v3_gene", "cro_annotation"))
-#Remove transcript syntax
-anno_cro$cro_v3_gene <- gsub("\\.\\d+$", "", anno_cro$cro_v3_gene)
-dim(anno_cro)
-#deduplicate
-anno_cro <- unique(anno_cro, incomparables = F)
+anno_cro <- read.delim(file = "/scratch/ac05869/nih/Cro_v3_genome/cro_v3.functional_annotation.txt", header = FALSE, sep = "\t", col.names = c("cro_v3", "cro_v3_annotation"))
+dim(anno_cro) #66262
 head(anno_cro)
-```
 
-#Syntenic hits
-```{r}
-synHits1_full <- read_delim("/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/pcu_v0_h1_vs_cro_v3.synHits.txt.gz", delim = "\t", col_types = cols())
-synHits1 <- synHits1_full %>%
-  select('id2', 'id1', 'chr1', 'sameOG', 'regID', 'regID', 'blkID') %>%
-  rename(cro_v3_gene = id2) %>%
-  full_join(path, by = 'cro_v3_gene') %>%
-  left_join(anno_cro, by = 'cro_v3_gene') %>%
-  select('cro_v3_gene', 'id1', 'chr1', 'sameOG', 'cro_annotation', 'tag', 'function', 'order', 'segment', 'regID', 'regID', 'blkID') %>%
-  distinct() %>%
-  rename(pcu_v0_h1 = id1) %>%
-  rename(chr_hap1 = chr1)
-dim(synHits1)
-head(synHits1)
-write_delim(synHits1, "/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/Annotated_pcu_v0_h1_vs_cro_v3.synHits.txt", delim = "\t")
+####NEED to read in repr. gff and keep only annotations that correspond to the repr. models.
 
-synHits2_full <- read_delim("/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/pcu_v0_h2_vs_cro_v3.synHits.txt.gz", delim = "\t", col_types = cols())
-synHits2 <- synHits2_full %>%
-  select('id2', 'id1', 'chr1', 'sameOG', 'regID', 'regID', 'blkID') %>%
-  rename(cro_v3_gene = id2) %>%
-  full_join(path, by = 'cro_v3_gene') %>%
-  left_join(anno_cro, by = 'cro_v3_gene') %>%
-  select('cro_v3_gene', 'id1', 'chr1', 'sameOG', 'cro_annotation', 'tag', 'function', 'order', 'segment', 'regID', 'regID', 'blkID') %>%
-  distinct() %>%
-  rename(pcu_v0_h2 = id1) %>%
-  rename(chr_hap2 = chr1)
-write_delim(synHits2, "/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/Annotated_pcu_v0_h2_vs_cro_v3.synHits.txt", delim = "\t")
+repr_gene_models <- read_delim(file = "/scratch/ac05869/nih/Cro_v3_genome/cro_v3.gene_models.repr.gff3", 
+                                delim = "\t", col_names = F)
+repr_loci <- repr_gene_models %>% 
+  dplyr::filter(X3 == "mRNA") %>% 
+  dplyr::select(X1, X4, X5, X7, X9) %>% 
+  separate(X9, c("ID", "Name"), sep = ";") %>% 
+  dplyr::select(-Name) %>% 
+  separate(ID, c("temp", "cro_v3"), sep = "=") %>% 
+  dplyr::select(-temp) %>% 
+  dplyr::rename(
+    Chr = X1,
+    start = X4,
+    end = X5,
+    strand = X7
+  )
+head(repr_loci)
+dim(repr_loci) #26347
 
-dim(synHits2)
-head(synHits2)
-```
-
-```{r}
-merged_synHits <- full_join(synHits1, synHits2, by = "cro_v3_gene") %>%
-  select('cro_v3_gene', 'pcu_v0_h1', 'chr_hap1', 'pcu_v0_h2', 'chr_hap2', 'sameOG.x', 'sameOG.y', 'cro_annotation.x') %>%
-  full_join(path, by = 'cro_v3_gene') %>%
-  rename(sameOG_hap1 = sameOG.x)%>%
-  rename(sameOG_hap2 = sameOG.y) %>%
-  select('cro_v3_gene', 'pcu_v0_h1', 'chr_hap1', 'pcu_v0_h2', 'chr_hap2', 'sameOG_hap1', 'sameOG_hap2', 'cro_annotation.x', 'tag', 'function', 'order', 'segment')
-head(merged_synHits)
-write_delim(merged_synHits, "/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/Annotated_merged_synHits_cro_v3_vs_pcu_v0_h1_vs_pcu_v0_h2.synHits.txt", delim = "\t")
+annotation <- anno_cro %>%
+  right_join(repr_loci, by = "cro_v3", relationship = "one-to-one")%>% 
+  mutate(cro_v3 = str_replace(cro_v3, "\\.[1-9]+$", "")) 
+dim(annotation) #26347
+head(annotation)
 
 ```
 
+#Annotate syntenic hits table
 ```{r}
-hap1_blast <- read_delim("/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/pcu_v0_h1_vs_cro_v3.allBlast.txt.gz", delim = "\t", col_types = cols())
-dim(hap1_blast)
-head(hap1_blast)
+table <- cro_syntelogs %>%
+  select(cro_v3, pcu_v0_h1, pcu_v0_h2) %>%
+  left_join(annotation, by = "cro_v3", relationship = "one-to-one") %>%
+  left_join(path, by = "cro_v3")
+table
+annotation[7793,1]
 
-hap2_blast <- read_delim("/scratch/ac05869/gs_pcu_cro/wd/syntenicHits/pcu_v0_h2_vs_cro_v3.allBlast.txt.gz", delim = "\t", col_types = cols())
-dim(hap1_blast)
-head(hap1_blast)
+write_delim(table, file = '/scratch/ac05869/genespace_plcu_v1_cro_v3/filtered_dataframes/query_pangenes_cro_syntelogs.csv', delim = ',')
 ```
 

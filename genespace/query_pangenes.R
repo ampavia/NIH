@@ -9,10 +9,7 @@ library(GENESPACE)
 wd = "/scratch/ac05869/gs_pcu_cro/wd"
 path2mcscanx = '/home/ac05869/miniconda/envs/genespace/bin'
 
-gpar <- init_genespace( wd = wd, path2mcscanx = path2mcscanx, nCores = 16,
-                        genomeIDs = c( "cro_v3" , "pcu_v0_h1", "pcu_v0_h2"),
-                        ploidy = c(1, 1, 1))
-out <- run_genespace(gpar, overwrite = T)
+load(file = "/scratch/ac05869/gs_pcu_cro/wd/results/gsParams.rda")
 
 roi <- data.frame(
   genome = c("cro_v3", "pcu_v0_h1", "pcu_v0_h2"),

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=CR_ARC_count
+#SBATCH --job-name=CR_arc_count
 #SBATCH --partition=highmem_p		# Partition name (batch, heighten_p, or gpu_p), _required_
 #SBATCH --ntasks=1 		# Run job in single task or in paralelle, _required_
 #SBATCH --cpus-per-task=16		# CPU cores per task
@@ -7,8 +7,8 @@
 #SBATCH --mem=300G			# How much memory per node, _required_
 #SBATCH --time=7-00:00:00		# Time Limit hrs:min:sec or day-hrs:min:sec 2-12:00:00 is 2.5 d, _required_
 #SBATCH --export=NONE		# Don't export submit node variables to compute node
-#SBATCH --output=%x_%j.out	# Standard output log
-#SBATCH --error=%x_%j.err		# Standard error log
+#SBATCH --output=/scratch/ac05869/10X_Multiome/KRT_leaf/err_out/%x_%j.out	# Standard output log
+#SBATCH --error=/scratch/ac05869/10X_Multiome/KRT_leaf/err_out/%x_%j.err		# Standard error log
 #SBATCH --mail-user=ac05869@uga.edu # Send an email when job is done or dead
 #SBATCH --mail-type=ALL	# Mail events (BEGIN, END, FAIL, ALL)
 
@@ -18,8 +18,8 @@ cd $WD
 
 ml CellRanger-ARC/2.0.2-QVupdate
 
-cellranger-arc count --id=${LIB}_CR-arc_count \
- --reference=./mitr_v1 \
+cellranger-arc count --id=${LIB}_atac_CR \
+ --reference=./genome/mitr_v1 \
  --libraries=./${LIB}/${LIB}.csv \
  --localcores=16 \
  --localmem=300
