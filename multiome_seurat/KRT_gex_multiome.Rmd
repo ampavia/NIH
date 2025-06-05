@@ -435,14 +435,21 @@ AF_clean <- subset(AF_sub_doublet_test, subset = DF.classifications_0.25_0.02_27
 AF_clean # 5706 cells
 #take note of number of doublets that were filtered out. 
 ```
+## Normalize the Data
+```{r}
+#Default = LogNormalize
+AE_clean <- NormalizeData(AE_clean)
+AF_clean <- NormalizeData(AF_clean)
+```
+
 ### Save RDS Object of cleaned data
 ```{r}
-saveRDS(AE_clean, file = "../Data/AE_seurat_doublet_filter.rds")
-saveRDS(AF_clean, file = "../Data/AF_seurat_doublet_filter.rds")
+saveRDS(AE_clean, file = "../Data/AE_clean_normalized.rds")
+saveRDS(AF_clean, file = "../Data/AF_clean_normalized.rds")
 
 
-#AE_sub_doublet_test <-readRDS(file = "../Data/AE_seurat_doublet_filter.rds")
-#AE_sub_doublet_test <-readRDS(file = "../Data/AF_seurat_doublet_filter.rds")
+#AE_clean <-readRDS(file = "../Data/AE_clean_normalized.rds")
+# AF_clean<-readRDS(file = "../Data/AF_clean_normalized.rds")
 ```
 
 ### Summary Statistics Cleaned Data: Number of Genes  
@@ -461,12 +468,6 @@ summary(AF_clean$nCount_RNA)
 #We can either re-run the above clustering steps for single samples OR we can integrate our replicates together at the same time
 ```
 
-## Normalize the Data
-```{r}
-#Default = LogNormalize
-AE_clean <- NormalizeData(AE_clean)
-AF_clean <- NormalizeData(AF_clean)
-```
 
 # Integrate 
 ```{r}
