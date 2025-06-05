@@ -43,11 +43,10 @@ KRT_AA_raw <- Read10X(data.dir = "/scratch/ac05869/KRT_AA_AB_sc/KRT_AA/data_for_
 ```{r}
 AB <- CreateSeuratObject(counts = KRT_AB_raw, min.cells = 3, min.features = 50,
                          project = "KRT_AB")
-AB  #check how many cells/genes starting with; 45896 features (genes) across 6173 samples (cells) within 1 assay
 
 AA <- CreateSeuratObject(counts = KRT_AA_raw, min.cells = 3, min.features = 50,
                          project = "KRT_AA")
-AA #cells/genes starting: 47288 features(genes) across 7571 samples(cells) within 1 assay
+AA #cells/genes starting: 70041 features(genes) across 8004 samples(cells) within 1 assay
 ```
 # Data QC
 ## Notes 
@@ -411,14 +410,14 @@ pK_choose = pK[which(BCmetric %in% max(BCmetric))]
 
 
 # save plot (not ggplot)
-png(file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_doubletfinder_pK_identification.png")
-par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
-plot(x = pK, y = BCmetric, pch = 16,type="b",
-col = "blue",lty=1)
-abline(v=pK_choose,lwd=2,col='red',lty=2)
-title("The BCmvn distributions")
-text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
-dev.off()
+#png(file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_doubletfinder_pK_identification.png")
+#par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
+#plot(x = pK, y = BCmetric, pch = 16,type="b",
+#col = "blue",lty=1)
+#abline(v=pK_choose,lwd=2,col='red',lty=2)
+#title("The BCmvn distributions")
+#text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
+#dev.off()
 
 ## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
 homotypic.prop <- modelHomotypic(AB@meta.data$seurat_clusters)           ## ex: annotations <- seu_kidney@meta.data$ClusteringResults
@@ -435,13 +434,13 @@ AB_doublet_test <- doubletFinder(AB, PCs = 1:50, pN = 0.25, pK = 0.04, nExp = nE
 AB_doublet_test # 423 doublets out of 5525 cells
 
 #the DF.classifications_0.25 will need to change! The next two values are the pK you choose and the number of doublets found
-DimPlot(AB_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = "DF.classifications_0.25_0.04_423" )+theme(aspect.ratio = 1)
+DimPlot(AB_doublet_test, pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = "DF.classifications_0.25_0.04_423" )+theme(aspect.ratio = 1)
 sum(str_count(AB_doublet_test$DF.classifications_0.25_0.04_423, "Doublet"))
 
 #Save a UMAP of which cells were the doublets
 ##Does this match your expectations from the Violin plots of the clusters we made earlier?
 
-ggsave("/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
+#ggsave("/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
 ```
 
 ## Save RDS Object from Doublet Finder
@@ -458,10 +457,8 @@ saveRDS(AB_doublet_test, file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB
 
 # Load RDS Object 
 ```{r}
-#AA_doublet_test <- 
-#("/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AA_doublet_finder_seurat_20jan25.rds")
-#AB_doublet_test <- 
-#("/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_doublet_finder_seurat_20jan25.rds")
+AA_doublet_test <- ("/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AA_doublet_finder_seurat_20jan25.rds")
+AB_doublet_test <- ("/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_doublet_finder_seurat_20jan25.rds")
 
 ```
 
@@ -469,10 +466,11 @@ saveRDS(AB_doublet_test, file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB
 ```{r}
 #AA
 AA_clean <- subset(AA_doublet_test, subset = DF.classifications_0.25_0.01_506 == "Singlet") #AA DF.classifications_0.25_0.01_506
-AA_clean # 6553 --> 6094 cells
-#AB
+AA_clean # 6728 cells
+
+#AB #6046
 AB_clean <- subset(AB_doublet_test, subset = DF.classifications_0.25_0.04_423 == "Singlet") #AB DF.classifications_0.25_0.04_423
-AB_clean #5525 --> 5138 cells
+AB_clean # 5623
 #take note of number of doublets that were filtered out. 
 ```
 
@@ -498,6 +496,16 @@ summary(AB_clean$nCount_RNA)
 AA_clean <- NormalizeData(AA_clean)
 AB_clean <- NormalizeData(AB_clean)
 ```
+## Save clean data
+```{r}
+saveRDS(AA_clean, file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AA_clean_normalized.rds")
+
+saveRDS(AB_clean, file = "/scratch/ac05869/KRT_AA_AB_sc/seurat.out/KRT_AB_clean_normalized.rds")
+
+#Notes:
+
+```
+
 
 # Integration via reciprocal PCA (RPCA)
 ## Notes
