@@ -1,0 +1,370 @@
+---
+title: "RNA analysis with integrated sc multiome and pipseq data"
+date: 4-June-2025
+author: "Anne Pavia"
+output:
+  html_document:
+    df_print: paged
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/wd')
+setwd("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/wd")
+```
+
+#Packages
+
+```{r}
+library(tidyverse)
+library(Seurat)
+library(readxl)
+library(RColorBrewer)
+library(rcartocolor)
+library(viridis)
+library(patchwork)
+library(showtext)
+library(ggpubr)
+showtext_auto(enable = F) #This makes it so you can see the text in the graphs, but it saves the images weird to turn to FALSE before ggsave
+```
+
+#Data
+
+```{r}
+KRT_RNA <- readRDS("../Integrated_RNA_Data/KRT_RNA_integrated_5june25.rds")
+
+cluster_avg.data_anno <- read_delim(file = "../Integrated_RNA_Results/KRT_RNA_integrated_cluster_av_expression.txt", delim = "\t")
+cluster_avg.long <- read_delim(file = "../Integrated_RNA_Results/KRT_RNA_integrated_cluster_av_expression_long.txt", delim = "\t")
+KRT_RNA_markers_anno <- read_delim("../Integrated_RNA_Results/KRT_RNA_integrated_markers.txt", delim = "\t")
+
+## genes 
+pathway_genes <- read_delim("../Data/pathway_genes_allwins_and_cro_orthologs.tsv") #contains both cro orthologs and allwins best hits
+rev_pathway_genes <- pathway_genes[order(nrow(pathway_genes):1),]
+pathway_genes <- pathway_genes %>%
+  left_join(anno, by = "gene_ID")
+write_delim(pathway_genes, file = "../Integrated_RNA_Data/pathway_genes_allwin_and_cro_othologs.tsv", delim = "\t")
+
+
+head(rev_pathway_genes)
+anno <- read_delim("../Integrated_RNA_Data/gene_annotations.tsv", delim = "\t")
+anno_markers <- read_delim("../Results/R_output/annotated_ath_marker_genes_in_kratom.csv")
+kratom_markers <- read_delim("../Data/kratom_specific_markers")
+
+```
+
+# Heat map at cluster level (MIA genes)
+
+## Check genes in dotplot
+
+```{r}
+DefaultAssay(KRT_RNA) <- "RNA"
+dotplot_data <- DotPlot(KRT_RNA, features = unique(rev_pathway_genes$gene_ID))$data
+dotplot_data %>% 
+  inner_join(rev_pathway_genes %>% 
+               distinct(gene_ID, .keep_all = T), by = c("features.plot"="gene_ID")) %>%
+  ggplot(aes(x = id, y = reorder(tag, order, decreasing = TRUE))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster",
+       title = "UGA Leaf Multiome + Pipseq") + 
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"),
+        legend.position = "bottom")
+
+#Warning: Check for any "requested variables were not found" before finalizing
+
+
+ggsave("../Integrated_RNA_Results/KRT_RNA_pathway_genes_best_orthologs.svg", height = 12, width = 10, bg = "white")
+ggsave("../Integrated_RNA_Results/KRT_RNA_pathway_genes_best_orthologs.png", height = 12, width = 10, bg = "white")
+```
+
+# Annotate clusters
+
+## Check marker genes
+
+```{r}
+DefaultAssay(KRT_RNA) <- "RNA"
+
+leaf_markers2 <- kratom_markers %>% 
+  bind_rows(anno_markers) %>%
+  dplyr::select(symbol, cell_type, gene_ID, functional_annotation) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.20_1G001050") == F) %>% 
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.20_1G005280") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.20_1G005700") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.20_2G005670") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.16_1G021060") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.01-1G001210") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.12-1G007060") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.22-1G006780") == F) %>%
+  dplyr::filter(str_detect(gene_ID, "Mitsp.v1.21-1G007810") == F) %>%
+  distinct()
+
+  
+Marker_dotplot <- DotPlot(KRT_RNA, features = unique(leaf_markers2$gene_ID))$data
+
+Marker_dotplot %>% 
+  inner_join(leaf_markers2 %>% 
+               distinct(gene_ID, .keep_all = T), by = c("features.plot"="gene_ID")) %>% 
+   mutate(cell_type2 = case_when(
+    str_detect(cell_type, "Meso") ~ "M",
+    str_detect(cell_type, "cam|x|phl|com|ray|vessel|bundle|pith|cortex|sieve|vas") ~ "V",
+    str_detect(cell_type, "Epi") ~ "E",
+    str_detect(cell_type, "guard") ~ "GC",
+    str_detect(cell_type, "IPAP") ~ "IP",
+    str_detect(cell_type, "idioblast")  ~ "I",
+    str_detect(cell_type, "proliferating")  ~ "Pro"
+  )) %>% 
+  mutate(LocusID = str_sub(features.plot, start = 1, end = 13)) %>%
+  mutate(cell_type2 = factor(cell_type2, levels = c(
+    "M", "E", "GC", "V", "IP", "I", "Pro"
+  ))) %>% 
+  dplyr::filter(str_detect(cell_type2, "NA") == F) %>% 
+  mutate(cell_type3 = as.numeric(cell_type2)) %>% 
+  mutate(gene_ID = reorder(features.plot, -cell_type3)) %>% 
+  ggplot(aes(x = id, y = paste(cell_type2, "-", symbol, ":", LocusID))) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster") + 
+   theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+
+ggsave("../Integrated_RNA_Results/cell_type_markers.svg", height = 24, width = 10, bg = "white")
+ggsave("../Integrated_RNA_Results/cell_type_markers.png", height = 24, width = 10, bg = "white")
+
+```
+
+## leaf cell type assignment
+
+"0", "2", "4", "6", "12", #M "1","8", "10", "16", #Epi "3", "15", "17",
+"21", #vasculature "9", "11", #prolif "19", ##IPAP "13", #Guard cells
+"5", "7", "14", "18", "20" #Unknown
+
+```{r}
+leaf_cell_type_assignment <- data.frame(
+  cluster = c(0:21)
+) %>% 
+  mutate(cell_type = case_when(
+    cluster == 0 | 
+      cluster == 2 | 
+      cluster == 4 |
+      cluster == 6 | 
+      cluster == 12 ~ "Mesophyll",
+    cluster == 1 | 
+      cluster == 8 |
+      cluster == 10 | 
+      cluster == 16 ~ "Epidermis",
+      cluster == 3 |
+      cluster == 15  |
+      cluster == 17 |
+      cluster == 21  ~ "Vasculature",
+    cluster == 9 |
+      cluster == 11 ~ "Proliferating",
+    cluster == 19 ~ "IPAP",
+      cluster == 13 ~ "Guard cells",
+    T ~ "Unassigned"
+  )) %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Vasculature", "Proliferating", "Guard cells", "IPAP", "Unassigned"
+                            ))) %>% 
+  mutate(cluster = factor(cluster, levels = c(
+    "0", "2", "4", "6", "12", #M
+    "1","8", "10", "16", #Epi
+    "3", "15", "17", "21", #vasculature
+   "9", "11", #prolif
+    "13", #Guard cells
+   "19", ##IPAP
+    "5", "7", "14", "18", "20" #Unknown
+  )))
+```
+
+```{r}
+UMAP2 <- DimPlot(KRT_RNA, reduction = "umap", label = T, label.size = 5, repel = T) +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 14)
+  )
+UMAP2
+
+leaf_assignment_graph <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "")) +
+  facet_wrap(~ cell_type, scales = "free", ncol = 2) +
+  geom_point(size = 8, aes(color = cluster)) +
+  geom_text(aes(label = cluster)) +
+  labs(x = NULL, y = NULL, "0", "2", "4", "6", "12", #M
+    "1","8", "10", "16", #Epi
+    "3", "15", "17", "21", #vasculature
+   "9", "11", #prolif
+    "13", #Guard cells
+   "19", ##IPAP
+    "5", "7", "14", "18", "20") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    panel.grid = element_blank(),
+    text = element_text(size = 12, face = "bold", color = "black"),
+    axis.text.x = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA)
+    )
+leaf_assignment_graph
+
+RNA_umap <- wrap_plots(UMAP2, leaf_assignment_graph, 
+           nrow = 2 , heights = c(1, 0.5))
+
+RNA_umap
+ggsave("../Integrated_RNA_Results/KRT_leaf_cluster_annotation_UMAP.png", height = 7, width = 5, bg = "white")
+ggsave("../Integrated_RNA_Results/KRT_leaf_cluster_annotation_UMAP.svg", height = 7, width = 5, bg = "white")
+```
+
+# Fraction of cell types of interest
+
+```{r}
+KRT_RNA@meta.data <- KRT_RNA@meta.data %>% 
+   mutate(cell_type = case_when(
+    seurat_clusters == 0 | 
+      seurat_clusters == 2 | 
+      seurat_clusters == 4 |
+      seurat_clusters == 6 | 
+      seurat_clusters == 12 ~ "Mesophyll",
+    seurat_clusters == 1 | 
+      seurat_clusters == 8 |
+      seurat_clusters == 10 | 
+      seurat_clusters == 16 ~ "Epidermis",
+      seurat_clusters == 3 |
+      seurat_clusters == 15  |
+      seurat_clusters == 17 |
+      seurat_clusters == 21  ~ "Vasculature",
+    seurat_clusters == 9 |
+      seurat_clusters == 11 ~ "Proliferating",
+    seurat_clusters == 19 ~ "IPAP",
+      seurat_clusters == 13 ~ "Guard cells",
+    T ~ "Unassigned"
+  ))
+
+
+KRT_RNA@meta.data %>% 
+  group_by(cell_type) %>% 
+  dplyr::count() %>% 
+  mutate(total = nrow(KRT_RNA@meta.data)) %>% 
+  mutate(percentage = n/total) %>% 
+  ungroup()
+
+KRT_multiome <- KRT_RNA %>% SplitObject(split.by = "source")
+KRT_multiome <- KRT_multiome$multiome
+
+KRT_multiome@meta.data %>% 
+  group_by(cell_type) %>% 
+  dplyr::count() %>% 
+  mutate(total = nrow(KRT_multiome@meta.data)) %>% 
+  mutate(percentage = n/total) %>% 
+  ungroup()
+
+KRT_multiome@meta.data %>% 
+  group_by(cell_type) %>% 
+  dplyr::count() %>% 
+  mutate(total = nrow(KRT_RNA@meta.data)) %>% 
+  mutate(percentage = n/total) %>% 
+  ungroup()
+```
+
+```{r}
+RNA_by_rep <- KRT_RNA@meta.data %>% 
+  group_by(cell_type, Run) %>% 
+  dplyr::count() %>% 
+  inner_join(
+    KRT_RNA@meta.data %>% 
+  group_by(Run) %>% 
+  dplyr::count() %>% 
+  ungroup() %>% 
+  dplyr::rename(total = n), 
+  by = "Run"
+  ) %>% 
+  mutate(percentage = n/total * 100) %>% 
+  ungroup() %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Vasculature", 
+                              "IPAP", "Proliferating", "Unassigned"
+                            ))) %>% 
+  mutate(cell_type = fct_rev(cell_type)) %>% 
+  mutate(Run = case_when(
+    Run == "KRT_AE" ~ "Rep1",
+    Run == "KRT_AF" ~ "Rep2",
+    Run == "KRT_AA" ~ "Rep3",
+    Run == "KRT_AB" ~ "Rep4"
+  )) %>% 
+  ggplot(aes(x = Run, y = percentage)) +
+  geom_bar(stat = "identity", aes(fill = cell_type)) +
+  scale_fill_manual(values = rev(c(brewer.pal(7, "Paired"), "grey80"))) +
+  labs(x = "", 
+       y = "% cells by cell type",
+       fill = "cell type") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  theme(axis.text.y = element_text(angle = 0, hjust = 1, color = "black")) +
+  coord_flip() 
+```
+
+```{r}
+Total_proportions <- KRT_RNA@meta.data %>% 
+  group_by(cell_type) %>% 
+  dplyr::count() %>% 
+  mutate(total = nrow(KRT_RNA@meta.data)) %>% 
+  mutate(percentage = n/total) %>% 
+  ungroup() %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Vasculature", 
+                              "IPAP", "Proliferating", "Unassigned"
+                            ))) %>% 
+  mutate(cell_type = fct_rev(cell_type)) %>% 
+  ggplot(aes(x = "Total", y = percentage)) +
+  geom_bar(stat = "identity", aes(fill = cell_type)) +
+  scale_fill_manual(values = rev(c(brewer.pal(7, "Paired"), "grey80"))) +
+  labs(x = "", 
+       y = "% cells by cell type",
+       fill = "cell type") +
+  theme_classic() +
+  theme(legend.position = "bottom") +
+  theme(axis.text.y = element_text(angle = 0, hjust = 1, color = "black")) +
+  coord_flip() 
+head(Total_proportions)
+```
+
+```{r}
+wrap_plots(RNA_by_rep, Total_proportions, nrow = 2, 
+           heights = c(1, 0.3))
+
+ggsave("../Integrated_RNA_Results/Cell_proportions.svg", height = 3, width = 6.5, bg = "white")
+ggsave("../Integrated_RNA_Results/Cell_proportions.png", height = 3, width = 6.5, bg = "white")
+```
+
+```{r}
+#saveRDS(KRT_RNA, "../Integrated_RNA_Data/KRT_RNA_with_metadata.Rds")
+KRT_RNA <- readRDS("../Integrated_RNA_Data/KRT_RNA_with_metadata.Rds")
+```
+
+## Save only multiome RDS Object (for integrating with ATAC cells?)
+
+Not until cluster annotation is complete. See
+'Integrated_RNA_analysis.Rmd'
+
+```{r}
+saveRDS(KRT_multiome, file = "../Integrated_RNA_Data/KRT_RNA_multiome_with_metadata_6june25.rds")
+```
