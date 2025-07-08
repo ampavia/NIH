@@ -6,6 +6,6 @@ bioawk -c fastx '{print $name "\t" length($seq) "\t" $seq}' gese_v2.asm.prefilte
 
 #Rename contigs in R with ~/NIH/rename_contigs.R
 
-sed 's/\t/\n/g' gese_v2_renamed.tsv > ../final_asm_renamed_contigs/gese_v2.asm.fa
-cd ../final_asm_renamed_contigs/
+sed 's/\t/\n/g' gese_v2_renamed.tsv > ../asm/gese_v2.asm.fa
+cd ../asm/
 md5sum gese_v2.asm.fa > gese_v2.asm.fa.md5
