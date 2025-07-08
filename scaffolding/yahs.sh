@@ -45,6 +45,7 @@ seqkit stats -a -o $STATS/100kb_filter_stats.txt -t dna -j $CPU $Min100
 busco -i $Min100 -m genome -l eudicotyledons_odb12 -c $CPU -o BUSCO_$(basename "$Min100") --out_path $STATS# --download_path $BUSCO
 
 echo "### Step 2.A: generate HiC contact map"
+#proceeded with the unfiltered output "_scaffolds_final.fa" which corresponds to "_scaffolds_final.agp"
 (juicer pre ${YAHS}/${PREF}.bin ${YAHS}/${PREF}_scaffolds_final.agp ${REF}.fai \
 2>${YAHS}/tmp_juicer_pre.log \
 | LC_ALL=C sort -k2,2d -k6,6d -T ${YAHS} --parallel=8 -S32G \
@@ -75,6 +76,7 @@ echo "### Step 4: need to run juicer_tools pre with 'out_JBAT.txt' (BED file for
 cat ${JBAT}/tmp_juicer_pre_JBAT.log | grep "PRE_C_SIZE" | cut -d' ' -f2- >${JBAT}/${PREF}_JBAT.chrom.sizes
 (java -jar -Xmx32G $EBROOTJUICEBOX/juicer_tools.1.9.9.jar pre ${JBAT}/${PREF}_JBAT.txt ${JBAT}/${PREF}_JBAT.hic.part ${JBAT}/${PREF}_JBAT.chrom.sizes) \
 && (mv ${JBAT}/${PREF}_JBAT.hic.part ${JBAT}/${PREF}_JBAT.hic)
+#load the JBAT.hic and the JBAT.assembly file into juicebox and manually edit
  
 ##copy the manually edited review.assembly file from Juicebox on local device into juicebox directory on cluster and
 ##run ~/NIH/juicer_post_yahs.sh
