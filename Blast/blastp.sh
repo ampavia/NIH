@@ -24,7 +24,7 @@ then
 fi
 
 # load blast module and make database
-ml BLAST+/2.11.0-gompi-2019b
+ml BLAST+/2.14.1-gompi-2023a
 mkdir /scratch/ac05869/nih/kratom_pathway/blast/pep_db
 cd /scratch/ac05869/nih/kratom_pathway/blast/pep_db
 cp /scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.hc_gene_models.repr.pep.fa .

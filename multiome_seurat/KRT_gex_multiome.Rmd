@@ -6,7 +6,7 @@ output:
     df_print: paged
 ---
 paste in Terminal
-# setwd("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/wd")`
+# setwd("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/wd")
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -35,10 +35,10 @@ AF_raw <- Read10X("../../KRT_AD_AF/KRT_AFGeneFull/raw/data_for_R/EM_EmptyDrops_C
 # objects 
 ```{r}
 AE <- CreateSeuratObject(counts = AE_raw, min.cells = 3, min.features = 200,
-                         project = "AE")
+                         project = "KRT_AE")
 
 AF <- CreateSeuratObject(counts = AF_raw, min.cells = 3, min.features = 200,
-                         project = "AF")
+                         project = "KRT_AF")
 ```
 
 ```{r}
@@ -343,16 +343,16 @@ BCmetric=bcmvn_ai$BCmetric
 pK_choose = pK[which(BCmetric %in% max(BCmetric))]
 
 # save plot (not ggplot)
-png(file = "../Results/R_output/AE_doubletfinder_pK_identification.png")
+#png(file = "../Results/R_output/AE_doubletfinder_pK_identification.png")
 
-par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
-plot(x = pK, y = BCmetric, pch = 16,type="b",
-col = "blue",lty=1)
-abline(v=pK_choose,lwd=2,col='red',lty=2)
-title("The BCmvn distributions")
-text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
+#par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
+#plot(x = pK, y = BCmetric, pch = 16,type="b",
+#col = "blue",lty=1)
+#abline(v=pK_choose,lwd=2,col='red',lty=2)
+#title("The BCmvn distributions")
+#text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
 
-dev.off()
+#dev.off()
 
 ## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
 homotypic.prop <- modelHomotypic(AE_sub@meta.data$seurat_clusters)
@@ -375,7 +375,7 @@ sum(str_count(AE_sub_doublet_test$DF.classifications_0.25_0.01_307, "Doublet"))
 
 #Save a UMAP of which cells were the doublets
 ##Does this match your expectations from the Violin plots of the clusters we made earlier?
-ggsave("../Results/R_output/AE_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
+#ggsave("../Results/R_output/AE_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
 ```
 
 
@@ -391,16 +391,14 @@ BCmetric=bcmvn_ai$BCmetric
 pK_choose = pK[which(BCmetric %in% max(BCmetric))]
 
 # save plot (not ggplot)
-png(file = "../Results/R_output/AF_doubletfinder_pK_identification.png")
-
-par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
-plot(x = pK, y = BCmetric, pch = 16,type="b",
-col = "blue",lty=1)
-abline(v=pK_choose,lwd=2,col='red',lty=2)
-title("The BCmvn distributions")
-text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
-
-dev.off()
+#png(file = "../Results/R_output/AF_doubletfinder_pK_identification.png")
+#par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
+#plot(x = pK, y = BCmetric, pch = 16,type="b",
+#col = "blue",lty=1)
+#abline(v=pK_choose,lwd=2,col='red',lty=2)
+#title("The BCmvn distributions")
+#text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
+#dev.off()
 
 ## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
 homotypic.prop <- modelHomotypic(AF_sub@meta.data$seurat_clusters)
@@ -423,7 +421,7 @@ sum(str_count(AF_sub_doublet_test$DF.classifications_0.25_0.02_275, "Doublet"))
 
 #Save a UMAP of which cells were the doublets
 ##Does this match your expectations from the Violin plots of the clusters we made earlier?
-ggsave("../Results/R_output/AF_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
+#ggsave("../Results/R_output/AF_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
 ```
 ## Filter Doublets
 ```{r}
@@ -607,31 +605,8 @@ head(anno)
 ```{r}
 #Need to create a file that has your marker genes and some metadata (cell types, etc.). Change all underscores to either dashes or periods
 
-pathway_genes <- read.table("../Data/pathway_orthologs_kratom.txt", header = TRUE, sep = "\t")
+pathway_genes <- read_delim("../Data/pathway_genes_allwins_and_cro_orthologs.tsv")
 head(pathway_genes)
-pathway_genes <- pathway_genes %>%
-  mutate(gene_ID = pathway_genes$kratom.id) %>%
-  mutate(gene_ID = str_replace(gene_ID, "_", "-")) %>%
-  mutate(gene_ID = str_replace(gene_ID, "\\.[1-9]+$", "")) %>% 
-  mutate(tag = paste(gene.abbreviation, ":", kratom.id)) %>%
-  left_join(anno, by = "gene_ID")
-rev_pathway_genes <- pathway_genes[order(nrow(pathway_genes):1),]
-head(rev_pathway_genes)
-write_excel_csv(pathway_genes, "../Results/R_output/leaf_MIA_orthologs.csv")
-
-#Pull top blast goi from allwin
-goi <- read.table("../Data/allwin_goi_top_blast.txt", header = TRUE, sep = "\t")
-head(goi)
-goi <- goi %>%
-  mutate(gene_ID = goi$kratom.id) %>%
-  mutate(gene_ID = str_replace(gene_ID, "_", "-")) %>%
-  mutate(gene_ID = str_replace(gene_ID, "\\.[1-9]+$", "")) %>% 
-  mutate(tag = paste(gene.abbreviation, ":", gene_ID)) %>%
-  left_join(anno, by = "gene_ID")
-head(goi)
-rev_goi <- goi[order(nrow(goi):1),]
-head(rev_goi)
-#write_excel_csv(goi, "../Results/R_output/leaf_MIA_goi_blast.csv")
 ```
 ## Find Average Expression
 ```{r}

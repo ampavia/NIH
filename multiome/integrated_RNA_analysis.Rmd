@@ -12,7 +12,7 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = '/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/wd')
+#knitr::opts_knit$set(root.dir = '/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/wd')
 setwd("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/wd")
 ```
 
@@ -34,25 +34,44 @@ showtext_auto(enable = F) #This makes it so you can see the text in the graphs, 
 #Data
 
 ```{r}
-KRT_RNA <- readRDS("../Integrated_RNA_Data/KRT_RNA_integrated_5june25.rds")
+KRT_RNA <- readRDS("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Data/KRT_RNA_integrated_5june25.rds")
 
-cluster_avg.data_anno <- read_delim(file = "../Integrated_RNA_Results/KRT_RNA_integrated_cluster_av_expression.txt", delim = "\t")
-cluster_avg.long <- read_delim(file = "../Integrated_RNA_Results/KRT_RNA_integrated_cluster_av_expression_long.txt", delim = "\t")
-KRT_RNA_markers_anno <- read_delim("../Integrated_RNA_Results/KRT_RNA_integrated_markers.txt", delim = "\t")
+cluster_avg.data_anno <- read_delim(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Results/KRT_RNA_integrated_cluster_av_expression.txt", delim = "\t")
+cluster_avg.long <- read_delim(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Results/KRT_RNA_integrated_cluster_av_expression_long.txt", delim = "\t")
+KRT_RNA_markers_anno <- read_delim("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Results/KRT_RNA_integrated_markers.txt", delim = "\t")
+
+
+#repr working model annotation
+repr_anno <- read_delim(file = "/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.working_models.repr.functional_annotation.txt")
 
 ## genes 
-pathway_genes <- read_delim("../Data/pathway_genes_allwins_and_cro_orthologs.tsv") #contains both cro orthologs and allwins best hits
+#pathway_genes <- read_delim("../Data/pathway_genes_allwins_and_cro_orthologs.tsv") #contains both cro orthologs and allwins best hits
+#pathway_genes <- pathway_genes %>%
+#  left_join(repr_anno, by = "gene_ID")
+#write_delim(pathway_genes, file = "../Data/annotated_kratom_pathway.tsv", delim = "\t")
+pathway_genes <- read_delim(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/annotated_kratom_pathway.tsv")
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+pathway_genes$gene_ID <- gsub(pattern = "_", replacement = "-", x = pathway_genes$gene_ID)
+# remove transcript ID so it matches the seurat genes
+pathway_genes$gene_ID <- gsub("\\.\\d+$", "", x = pathway_genes$gene_ID)
+pathway_genes <- pathway_genes %>% mutate(tag2 = paste(tag, "-", gene_ID))
+
 rev_pathway_genes <- pathway_genes[order(nrow(pathway_genes):1),]
-pathway_genes <- pathway_genes %>%
-  left_join(anno, by = "gene_ID")
-write_delim(pathway_genes, file = "../Integrated_RNA_Data/pathway_genes_allwin_and_cro_othologs.tsv", delim = "\t")
-
-
 head(rev_pathway_genes)
-anno <- read_delim("../Integrated_RNA_Data/gene_annotations.tsv", delim = "\t")
-anno_markers <- read_delim("../Results/R_output/annotated_ath_marker_genes_in_kratom.csv")
-kratom_markers <- read_delim("../Data/kratom_specific_markers")
 
+#Baits <- read_delim("../Data/allwin_goi_top_blast.txt", delim = "\t")
+#Baits <- Baits %>% left_join(repr_anno, by = "gene_ID")
+#head(Baits)
+#write_delim(Baits, file = "../Data/annotated_allwin_goi_top_blast.txt")
+Baits <- read_delim(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/annotated_allwin_goi_top_blast.txt")
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+Baits$gene_ID <- gsub(pattern = "_", replacement = "-", x = Baits$gene_ID)
+# remove transcript ID so it matches the seurat genes
+Baits$gene_ID <- gsub("\\.\\d+$", "", x = Baits$gene_ID)
+
+anno <- read_delim("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Data/gene_annotations.tsv", delim = "\t")
+anno_markers <- read_delim("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Results/R_output/annotated_ath_marker_genes_in_kratom.csv")
+kratom_markers <- read_delim("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/kratom_specific_markers")
 ```
 
 # Heat map at cluster level (MIA genes)
@@ -61,11 +80,12 @@ kratom_markers <- read_delim("../Data/kratom_specific_markers")
 
 ```{r}
 DefaultAssay(KRT_RNA) <- "RNA"
+rev_pathway_genes <- rev_pathway_genes %>% filter(gene_ID != "Mitsp.v1.03-2G022350") #TDC gene is not present in dataset
 dotplot_data <- DotPlot(KRT_RNA, features = unique(rev_pathway_genes$gene_ID))$data
 dotplot_data %>% 
   inner_join(rev_pathway_genes %>% 
                distinct(gene_ID, .keep_all = T), by = c("features.plot"="gene_ID")) %>%
-  ggplot(aes(x = id, y = reorder(tag, order, decreasing = TRUE))) +
+  ggplot(aes(x = id, y = reorder(tag2, order, decreasing = TRUE))) +
   geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
   scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
   labs(y = "Genes",
@@ -81,8 +101,8 @@ dotplot_data %>%
 #Warning: Check for any "requested variables were not found" before finalizing
 
 
-ggsave("../Integrated_RNA_Results/KRT_RNA_pathway_genes_best_orthologs.svg", height = 12, width = 10, bg = "white")
-ggsave("../Integrated_RNA_Results/KRT_RNA_pathway_genes_best_orthologs.png", height = 12, width = 10, bg = "white")
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Results/KRT_RNA_pathway_genes_best_orthologs.svg", height = 10, width = 10, bg = "white")
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Results/KRT_RNA_pathway_genes_best_orthologs.png", height = 10, width = 10, bg = "white")
 ```
 
 # Annotate clusters
@@ -166,6 +186,7 @@ leaf_cell_type_assignment <- data.frame(
       cluster == 10 | 
       cluster == 16 ~ "Epidermis",
       cluster == 3 |
+      cluster == 5 |
       cluster == 15  |
       cluster == 17 |
       cluster == 21  ~ "Vasculature",
@@ -180,13 +201,13 @@ leaf_cell_type_assignment <- data.frame(
                               "Mesophyll", "Epidermis", "Vasculature", "Proliferating", "Guard cells", "IPAP", "Unassigned"
                             ))) %>% 
   mutate(cluster = factor(cluster, levels = c(
-    "0", "2", "4", "6", "12", #M
+   "0", "2", "4", "6", "12", #M
     "1","8", "10", "16", #Epi
-    "3", "15", "17", "21", #vasculature
+    "3", "5", "15", "17", "21", #vasculature
    "9", "11", #prolif
     "13", #Guard cells
    "19", ##IPAP
-    "5", "7", "14", "18", "20" #Unknown
+    "7", "14", "18", "20" #Unknown
   )))
 ```
 
@@ -207,11 +228,11 @@ leaf_assignment_graph <- leaf_cell_type_assignment %>%
   geom_text(aes(label = cluster)) +
   labs(x = NULL, y = NULL, "0", "2", "4", "6", "12", #M
     "1","8", "10", "16", #Epi
-    "3", "15", "17", "21", #vasculature
+    "3", "5", "15", "17", "21", #vasculature
    "9", "11", #prolif
     "13", #Guard cells
    "19", ##IPAP
-    "5", "7", "14", "18", "20") +
+    "7", "14", "18", "20") +
   theme_minimal() +
   theme(
     legend.position = "none",
@@ -226,8 +247,8 @@ RNA_umap <- wrap_plots(UMAP2, leaf_assignment_graph,
            nrow = 2 , heights = c(1, 0.5))
 
 RNA_umap
-ggsave("../Integrated_RNA_Results/KRT_leaf_cluster_annotation_UMAP.png", height = 7, width = 5, bg = "white")
-ggsave("../Integrated_RNA_Results/KRT_leaf_cluster_annotation_UMAP.svg", height = 7, width = 5, bg = "white")
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Results/KRT_leaf_cluster_annotation_UMAP.png", height = 7, width = 5, bg = "white")
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Results/KRT_leaf_cluster_annotation_UMAP.svg", height = 7, width = 5, bg = "white")
 ```
 
 # Fraction of cell types of interest
@@ -245,6 +266,7 @@ KRT_RNA@meta.data <- KRT_RNA@meta.data %>%
       seurat_clusters == 10 | 
       seurat_clusters == 16 ~ "Epidermis",
       seurat_clusters == 3 |
+      seurat_clusters == 5 |
       seurat_clusters == 15  |
       seurat_clusters == 17 |
       seurat_clusters == 21  ~ "Vasculature",
@@ -351,13 +373,13 @@ head(Total_proportions)
 wrap_plots(RNA_by_rep, Total_proportions, nrow = 2, 
            heights = c(1, 0.3))
 
-ggsave("../Integrated_RNA_Results/Cell_proportions.svg", height = 3, width = 6.5, bg = "white")
-ggsave("../Integrated_RNA_Results/Cell_proportions.png", height = 3, width = 6.5, bg = "white")
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Results/Cell_proportions.svg", height = 3, width = 6.5, bg = "white")
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Results/Cell_proportions.png", height = 3, width = 6.5, bg = "white")
 ```
 
 ```{r}
-#saveRDS(KRT_RNA, "../Integrated_RNA_Data/KRT_RNA_with_metadata.Rds")
-KRT_RNA <- readRDS("../Integrated_RNA_Data/KRT_RNA_with_metadata.Rds")
+saveRDS(KRT_RNA, "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Data/KRT_RNA_with_metadata.Rds")
+KRT_RNA <- readRDS("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Data/KRT_RNA_with_metadata.Rds")
 ```
 
 ## Save only multiome RDS Object (for integrating with ATAC cells?)
@@ -366,5 +388,5 @@ Not until cluster annotation is complete. See
 'Integrated_RNA_analysis.Rmd'
 
 ```{r}
-saveRDS(KRT_multiome, file = "../Integrated_RNA_Data/KRT_RNA_multiome_with_metadata_6june25.rds")
+saveRDS(KRT_multiome, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Data/KRT_RNA_multiome_with_metadata_24july25.rds")
 ```

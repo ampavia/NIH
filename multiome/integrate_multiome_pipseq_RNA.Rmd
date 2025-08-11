@@ -217,6 +217,29 @@ anno <- anno_mitr %>%
 dim(anno) #103160
 head(anno)
 ```
+#Write gene ID's as real gene ID's
+```{r}
+gene_identities <- repr_gene_models %>% 
+  dplyr::filter(X3 == "mRNA") %>% 
+  dplyr::select(X1, X4, X5, X7, X9) %>% 
+  separate(X9, c("ID", "Name"), sep = ";") %>% 
+  dplyr::select(-Name) %>% 
+  separate(ID, c("temp", "gene"), sep = "=") %>% 
+  dplyr::select(-temp) %>% 
+  mutate(gene_ID = str_replace(gene, "_", "-")) %>% 
+  mutate(gene_ID = str_replace(gene_ID, "\\.\\d+$", "")) %>%
+  dplyr::rename(
+    Chr = X1,
+    start = X4,
+    end = X5,
+    strand = X7
+  ) %>%
+  select(gene, gene_ID)
+
+head(gene_identities)
+dim(gene_identities) #103160
+```
+
 ## Pull MIA genes 
 ```{r}
 #Need to create a file that has your marker genes and some metadata (cell types, etc.). Change all underscores to either dashes or periods
@@ -270,17 +293,21 @@ levels(KRT_RNA) <- orig.levels
 cluster.averages <- AverageExpression(KRT_RNA, return.seurat = TRUE, )
 cluster.averages
 cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ])
-saveRDS(cluster_avg.data, file = "../Integrated_RNA_Data/KRT_RNA_cluster_expression.rds")
+#saveRDS(cluster_avg.data, file = "../Integrated_RNA_Data/KRT_RNA_cluster_expression.rds")
+cluster_avg.data <- readRDS(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Data/KRT_RNA_cluster_expression.rds")
 
-cluster_avg.data <- readRDS(file = "../Integrated_RNA_Data/KRT_RNA_cluster_expression.rds")
+cluster_avg.data_table <- cluster_avg.data %>%
+  as.data.frame() 
+dim(cluster_avg.data_table) #60140
 
-cluster_avg.data_anno <- cluster_avg.data %>%
-  as.data.frame() %>%
+cluster_avg.data_table <- cluster_avg.data_table %>%
   rownames_to_column(var = "gene_ID") %>%
-  left_join(anno, by = "gene_ID", relationship = "one-to-one")
-head(cluster_avg.data_anno)
+  left_join(gene_identities, by = "gene_ID") %>%
+  select(gene, !gene_ID)
+dim(cluster_avg.data_table)#60140
+head(cluster_avg.data_table)
   
-write_delim(cluster_avg.data_anno, file = "../Integrated_RNA_Results/KRT_RNA_integrated_cluster_av_expression.txt", delim = "\t")
+write_csv(cluster_avg.data_table, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Results/KRT_RNA_integrated_cluster_av_expression_repr_transcript.csv") #For plantismash gene coexpression
 
 cluster_avg.long <- cluster_avg.data %>%
   as.data.frame() %>%
@@ -290,6 +317,14 @@ cluster_avg.long$cluster <- cluster_avg.long$cluster %>%
   as.factor()
 head(cluster_avg.long)
 write_delim(cluster_avg.long, file = "../Integrated_RNA_Results/KRT_RNA_integrated_cluster_av_expression_long.txt", delim = "\t")
+
+cluster_avg.data_anno <- cluster_avg.data %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_ID") %>%
+  left_join(anno, by = "gene_ID", relationship = "one-to-one")
+head(cluster_avg.data_anno)
+  
+write_delim(cluster_avg.data_anno, file = "../Integrated_RNA_Results/KRT_RNA_integrated_cluster_av_expression_annotated.txt", delim = "\t")
 ```
 
 
@@ -301,25 +336,60 @@ KRT_RNA = JoinLayers(KRT_RNA)
 head(KRT_RNA)
 
 KRT_RNA_markers <- FindAllMarkers(KRT_RNA, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
-saveRDS(KRT_RNA_markers, file = "../Integrated_RNA_Data/KRT_RNA_markers.rds")
+#saveRDS(KRT_RNA_markers, file = "../Integrated_RNA_Data/KRT_RNA_markers.rds")
+KRT_RNA_markers <- readRDS(file = "../Integrated_RNA_Data/KRT_RNA_markers.rds")
 
-#KRT_RNA_markers<- readRDS(file = "../Integrated_RNA_Data/KRT_RNA_markers.rds")
 KRT_RNA_markers
 dim(KRT_RNA_markers)
-KRT_RNA_markers_anno <- KRT_RNA_markers %>%
+KRT_RNA_markers_table <- KRT_RNA_markers %>%
   dplyr::rename(gene_ID = gene) %>%
   rownames_to_column(var = "rownames") %>%
-  select(!rownames) %>%
+  select(!rownames) #%>%
+#  left_join(anno, by = "gene_ID") %>%
+#  left_join(cluster_avg.long, by = c("gene_ID", "cluster"), relationship = "one-to-one") %>%
+#  select(gene_ID, cluster, p_val, p_val_adj, avg_log2FC, pct.1, pct.2, avg.exp, functional_annotation, start,end,strand)
+KRT_RNA_markers_table
+dim(KRT_RNA_markers_table)
+
+write_delim(KRT_RNA_markers_table, "../Integrated_RNA_Results/KRT_RNA_integrated_markers.txt", delim = "\t")
+write_csv(KRT_RNA_markers_table, "../Integrated_RNA_Results/KRT_RNA_integrated_markers.csv")
+
+KRT_RNA_markers_anno <- KRT_RNA_markers_table %>%
   left_join(anno, by = "gene_ID") %>%
-  left_join(cluster_avg.long, by = c("gene_ID", "cluster"), relationship = "one-to-one") %>%
-  select(gene_ID, cluster, p_val, p_val_adj, avg_log2FC, pct.1, pct.2, avg.exp, functional_annotation, start,end,strand)
-KRT_RNA_markers_anno
-dim(KRT_RNA_markers_anno)
-write_delim(KRT_RNA_markers_anno, "../Integrated_RNA_Results/KRT_RNA_integrated_markers.txt", delim = "\t")
+  select(gene_ID, cluster, p_val, p_val_adj, avg_log2FC, pct.1, pct.2, functional_annotation, start,end,strand)
+write_delim(KRT_RNA_markers_anno, "../Integrated_RNA_Results/KRT_RNA_integrated_markers_annotated.txt", delim = "\t")
+write_csv(KRT_RNA_markers_anno, "../Integrated_RNA_Results/KRT_RNA_integrated_markers_annotated.csv")
 ```
 
 ## Save cleaned integrated RDS Object
 ```{r}
 saveRDS(KRT_RNA, file = "../Integrated_RNA_Data/KRT_RNA_integrated_5june25.rds")
-#KRT_RNA <- readRDS("../Integrated_RNA_Data/KRT_RNA_integrated_5june25.rds")
+KRT_RNA <- readRDS("../Integrated_RNA_Data/KRT_RNA_integrated_5june25.rds")
 ```
+
+#Write GEX table with properly formatted gene_ID's
+```{r}
+repr_gene_models <- read_delim("../../genome/mitr_v1.working_models.repr.gff3",
+                               delim = "\t", col_names = F)
+dim(repr_gene_models) #1152702
+
+repr_work_model_genes <- repr_gene_models %>% 
+  dplyr::filter(X3 == "mRNA") %>% 
+  dplyr::select(X1, X4, X5, X7, X9) %>% 
+  separate(X9, c("ID", "Name"), sep = ";") %>% 
+  dplyr::select(-Name) %>% 
+  separate(ID, c("temp", "gene"), sep = "=") %>% 
+  dplyr::select(-temp) %>% 
+  mutate(gene_ID = str_replace(gene, "_", "-")) %>% 
+  mutate(gene_ID = str_replace(gene_ID, "\\.\\d+$", "")) %>%
+  dplyr::rename(
+    Chr = X1,
+    start = X4,
+    end = X5,
+    strand = X7
+  )
+
+head(repr_work_model_genes)
+dim(repr_work_model_genes) #103160
+```
+

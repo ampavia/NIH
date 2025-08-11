@@ -1,0 +1,398 @@
+---
+title: "KRT leaf ATAC preprocessing haplotype 1"
+author: "Anne Pavia"
+date: "2025-June-3"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd('/scratch/ac05869/10X_Multiome/KRT_leaf/ATAC_analysis/wd')
+knitr::opts_knit$set(root.dir = '/scratch/ac05869/10X_Multiome/KRT_leaf/ATAC_analysis/wd')
+```
+
+# Packages 
+```{r}
+#install.packages("hdf5r")
+library(hdf5r)
+library(tidyverse)
+library(Seurat) 
+library(Signac)
+library(GenomicRanges)
+library(readxl)
+library(RColorBrewer)
+library(viridis)
+library(rcartocolor)
+library(patchwork)
+library(showtext)
+showtext_auto(enable = F)
+```
+#WD
+paste into terminal:
+setwd('/scratch/ac05869/10X_Multiome/KRT_leaf/ATAC_analysis/wd')
+cd /scratch/ac05869/10X_Multiome/KRT_leaf/ATAC_analysis/wd
+
+# KRT_AC_AE: Rep 1
+## Data 
+```{r}
+KRT1_counts <- Read10X_h5(filename = "../AC_cellranger_out/filtered_feature_bc_matrix.h5")
+
+KRT1 <- CreateSeuratObject(
+  counts = KRT1_counts$`Gene Expression`,
+  assay = "RNA",
+  project = "Rep 1"
+)
+
+KRT1[["ATAC"]] <- CreateChromatinAssay(
+  counts = KRT1_counts$Peaks,
+  sep = c(":", "-"),
+  fragments = "../AC_cellranger_out/atac_fragments.tsv.gz"
+)
+
+KRT1
+
+```
+138322 features
+5271 samples
+2 assays: counts('Gene Expression) and ATAC(chromatin assay)
+
+## Filter nuclei
+```{r}
+DefaultAssay(KRT1) <- "ATAC"
+KRT1 <- NucleosomeSignal(object = KRT1)
+```
+
+```{r}
+VlnPlot(
+  object = KRT1,
+  features = c('nCount_RNA', 'nCount_ATAC',
+               'nucleosome_signal'),
+  pt.size = 0,
+  ncol = 3
+) 
+
+
+```
+```{r}
+A<- KRT1$nCount_RNA %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x = `.`)) + 
+  geom_histogram(bins = 100, color = "white") +
+  geom_vline(xintercept = 5000, color = "tomato1") +
+  geom_vline(xintercept = 300, color = "tomato1") +
+  ggtitle("Filtering nCount_RNA") +
+  theme_classic()
+
+B<- KRT1$nCount_ATAC %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x = `.`)) + 
+  geom_histogram(bins = 100, color = "white") +
+  geom_vline(xintercept = 40000, color = "tomato1") +
+  geom_vline(xintercept = 3000, color = "tomato") +
+  ggtitle("Filtering nCount_ATAC") +
+  theme_classic()
+
+filtering <-
+  wrap_plots(A + labs(tag = "(a)"),
+           B + labs(tag = "(b)"),
+           ncol = 1, nrow = 2,
+           widths = c(1), 
+           heights = c(0.5, 0.5))
+filtering
+ggsave(file = "../R_output/KRT_AC_AE_filter.svg", height = 4, width = 5, bg = "white")
+ggsave(file = "../R_output/KRT_AC_AE_filter.png", height = 4, width = 5, bg = "white")
+```
+
+
+```{r}
+KRT1 <- subset(
+  x = KRT1,
+  subset =  nCount_ATAC < 40000 &
+    nCount_RNA < 5000 &
+    nCount_ATAC > 3000 & 
+    nCount_RNA > 300 &
+    nucleosome_signal < 2
+)
+
+KRT1
+
+```
+138322 features
+4077 samples
+
+## GEX processing
+```{r}
+DefaultAssay(KRT1) <- "RNA"
+KRT1 <- SCTransform(KRT1) 
+KRT1 <- RunPCA(KRT1) 
+KRT1 <- RunUMAP(KRT1, dims = 1:50, reduction.name = "umap.rna",
+                reduction.kep = "rnaUMAP_")
+```
+
+## ATAC processing
+```{r}
+DefaultAssay(KRT1) <- "ATAC"
+KRT1 <- FindTopFeatures(KRT1, min.cutoff = "q0")
+KRT1 <- RunTFIDF(KRT1)
+KRT1 <- RunSVD(KRT1)
+KRT1 <- RunUMAP(KRT1, reduction = 'lsi', dims = 2:50, reduction.name = "umap.atac", reduction.key = "atacUMAP_")
+```
+
+## Joint UMAP
+```{r}
+KRT1 <- FindMultiModalNeighbors(
+  object = KRT1,
+  reduction.list = list("pca", "lsi"), 
+  dims.list = list(1:50, 2:50),
+  modality.weight.name = "RNA.weight",
+  verbose = TRUE
+)
+
+# build a joint UMAP visualization
+KRT1 <- RunUMAP(
+  object = KRT1,
+  nn.name = "weighted.nn",
+  reduction.name = "wnn.umap",
+  reduction.key = "wnnUMAP_"
+)
+
+```
+```{r}
+KRT1 <- FindClusters(KRT1, graph.name = "wsnn", algorithm = 3)
+```
+
+
+```{r}
+KRT1_rna <- DimPlot(KRT1, label = TRUE, repel = TRUE, reduction = "umap.rna") +
+  NoLegend() +
+  theme_void() +
+  ggtitle("RNA")
+
+KRT1_atac <- DimPlot(KRT1, label = TRUE, repel = TRUE, reduction = "umap.atac") +
+  NoLegend() +
+  theme_void()+
+  ggtitle("ATAC")
+
+KRT1_joint <- DimPlot(KRT1, label = TRUE, repel = TRUE, reduction = "wnn.umap") +
+  NoLegend() +
+  theme_void() +
+  ggtitle("Joint")
+
+wrap_plots(
+  KRT1_rna, KRT1_atac, KRT1_joint
+) &
+  NoLegend() &
+  theme(plot.title = element_text(hjust = 0.5)) &
+  theme(plot.margin = margin(t = 0, r = 3, b = 0, l = 0.5, unit = "lines")) 
+
+ggsave("../R_output/KRT1_UMAPs.svg", height = 3, width = 8, bg = "white")
+ggsave("../R_output/KRT1_UMAPs.png", height = 3, width = 8, bg = "white")
+```
+# Write out filtered object
+```{r}
+KRT1$run <- "KRT1"
+DefaultAssay(KRT1) <- "RNA"
+
+KRT1
+
+saveRDS(KRT1, "../R_output/KRT1_filtered.Rds")
+```
+
+KRT1: 5271 nuclei
+
+```{r}
+KRT1$nCount_RNA %>% summary()
+KRT1$nFeature_RNA %>% summary()
+
+KRT1$nCount_ATAC %>% summary()
+KRT1$nFeature_ATAC %>% summary()
+```
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    103    1031    1451    1580    1940   13141 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+     99     856    1162    1212    1488    7062 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    119    3876    8839   11227   15082  129690 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+     61    1871    4010    4850    6598   35421 
+
+# KRT_AD_AF: Rep 2 (KRT2)
+## Data 
+```{r}
+KRT2_counts <- Read10X_h5(filename = "../AD_cellranger_out/filtered_feature_bc_matrix.h5")
+
+KRT2 <- CreateSeuratObject(
+  counts = KRT2_counts$`Gene Expression`,
+  assay = "RNA",
+  project = "Rep 2"
+)
+
+KRT2[["ATAC"]] <- CreateChromatinAssay(
+  counts = KRT2_counts$Peaks,
+  sep = c(":", "-"),
+  fragments = "../AD_cellranger_out/atac_fragments.tsv.gz"
+)
+
+KRT2
+```
+ 101664 features across 5322 samples within 2 assays 
+
+## Filter nuclei
+```{r}
+DefaultAssay(KRT2) <- "ATAC"
+KRT2 <- NucleosomeSignal(object = KRT2)
+```
+
+```{r}
+VlnPlot(
+  object = KRT2,
+  features = c('nCount_RNA', 'nCount_ATAC',
+               'nucleosome_signal'),
+  pt.size = 0,
+  ncol = 3
+) 
+
+
+```
+```{r}
+C<- KRT2$nCount_RNA %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x = `.`)) + 
+  geom_histogram(bins = 100, color = "white") +
+  geom_vline(xintercept = 5000, color = "tomato1") +
+  geom_vline(xintercept = 500, color = "tomato1") +
+  ggtitle("Filtering nCount_RNA") +
+  theme_classic()
+
+D<- KRT2$nCount_ATAC %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x = `.`)) + 
+  geom_histogram(bins = 100, color = "white") +
+  geom_vline(xintercept = 40000, color = "tomato1") +
+  geom_vline(xintercept = 2000, color = "tomato") +
+  ggtitle("Filtering nCount_ATAC") +
+  theme_classic()
+
+filtering <-
+  wrap_plots(C + labs(tag = "(a)"),
+           D + labs(tag = "(b)"),
+           ncol = 1, nrow = 2,
+           widths = c(1), 
+           heights = c(0.5, 0.5))
+filtering
+ggsave(file = "../R_output/KRT_AD_AF_filter.svg", height = 4, width = 5, bg = "white")
+ggsave(file = "../R_output/KRT_AD_AF_filter.png", height = 4, width = 5, bg = "white")
+```
+
+
+```{r}
+KRT2 <- subset(
+  x = KRT2,
+  subset =  nCount_ATAC < 40000 &
+    nCount_RNA < 5000 &
+    nCount_ATAC > 2000 & 
+    nCount_RNA > 500 &
+    nucleosome_signal < 2
+)
+
+KRT2
+```
+101664 features across 4262 samples
+
+## GEX processing
+```{r}
+DefaultAssay(KRT2) <- "RNA"
+KRT2 <- SCTransform(KRT2) 
+KRT2 <- RunPCA(KRT2) 
+KRT2 <- RunUMAP(KRT2, dims = 1:50, reduction.name = "umap.rna",
+                reduction.kep = "rnaUMAP_")
+```
+
+## ATAC processing
+```{r}
+DefaultAssay(KRT2) <- "ATAC"
+KRT2 <- FindTopFeatures(KRT2, min.cutoff = "q0")
+KRT2 <- RunTFIDF(KRT2)
+KRT2 <- RunSVD(KRT2)
+KRT2 <- RunUMAP(KRT2, reduction = 'lsi', dims = 2:50, reduction.name = "umap.atac", reduction.key = "atacUMAP_")
+```
+
+## Joint UMAP
+```{r}
+KRT2 <- FindMultiModalNeighbors(
+  object = KRT2,
+  reduction.list = list("pca", "lsi"), 
+  dims.list = list(1:50, 2:50),
+  modality.weight.name = "RNA.weight",
+  verbose = TRUE
+)
+
+# build a joint UMAP visualization
+KRT2 <- RunUMAP(
+  object = KRT2,
+  nn.name = "weighted.nn",
+  reduction.name = "wnn.umap",
+  reduction.key = "wnnUMAP_"
+)
+
+```
+
+```{r}
+KRT2 <- FindClusters(KRT2, graph.name = "wsnn", algorithm = 3)
+```
+
+
+```{r}
+KRT2_rna <- DimPlot(KRT2, label = TRUE, repel = TRUE, reduction = "umap.rna") +
+  NoLegend() +
+  theme_void() +
+  ggtitle("RNA")
+
+KRT2_atac <- DimPlot(KRT2, label = TRUE, repel = TRUE, reduction = "umap.atac") +
+  NoLegend() +
+  theme_void()+
+  ggtitle("ATAC")
+
+KRT2_joint <- DimPlot(KRT2, label = TRUE, repel = TRUE, reduction = "wnn.umap") +
+  NoLegend() +
+  theme_void() +
+  ggtitle("Joint")
+
+wrap_plots(
+  KRT2_rna, KRT2_atac, KRT2_joint
+) &
+  NoLegend() &
+  theme(plot.title = element_text(hjust = 0.5)) &
+  theme(plot.margin = margin(t = 0, r = 3, b = 0, l = 0.5, unit = "lines")) 
+
+ggsave("../R_output/KRT2_UMAPs.svg", height = 3, width = 8, bg = "white")
+ggsave("../R_output/KRT2_UMAPs.png", height = 3, width = 8, bg = "white")
+```
+# Write out filtered object
+```{r}
+KRT2$run <- "KRT2"
+DefaultAssay(KRT2) <- "RNA"
+
+KRT2
+
+saveRDS(KRT2, "../R_output/KRT2_filtered.Rds")
+```
+
+KRT2: 4262 nuclei
+
+```{r}
+KRT2$nCount_RNA %>% summary()
+KRT2$nFeature_RNA %>% summary()
+
+KRT2$nCount_ATAC %>% summary()
+KRT2$nFeature_ATAC %>% summary()
+```
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    506    1269    1719    1818    2212    4979 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    420    1008    1318    1361    1638    3239 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+   2017    5339    9258   11329   15200   39878 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    833    2490    4169    4854    6508   15036 
+    

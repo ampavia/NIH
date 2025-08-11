@@ -1,0 +1,1095 @@
+---
+title: "UGA_kratom_leaf_multiome_pipseq_coexp"
+author: "Anne Pavia"
+date: "2025-06-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+#knitr::opts_knit$set(root.dir = '/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/wd')
+#setwd("/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/wd")
+```
+
+#Packages
+```{r}
+library(tidyverse)
+library(igraph)
+library(ggraph)
+library(Seurat)
+library(readxl)
+library(patchwork)
+library(RColorBrewer)
+library(viridis)
+library(showtext)
+library(ape)
+#showtext_auto(enable = T)
+set.seed(666)
+options(bitmapType='cairo')
+```
+
+#Load data
+```{r}
+KRT_RNA <- readRDS("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Data/KRT_RNA_integrated_5june25.rds")
+DefaultAssay(KRT_RNA) <- "RNA"
+cluster.averages <- AverageExpression(KRT_RNA, return.seurat = TRUE)
+cluster.averages
+cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ]) 
+
+Exp_table <- cluster_avg.data #"As of Seurat v5, we recommend using AggregateExpression to perform pseudo-bulk analysis."
+colnames(Exp_table) <- as.factor(c(0:21)) #changes based on cluster numbers
+
+head(Exp_table)
+dim(Exp_table) #75499 genes
+```
+#format pathway genes
+```{r}
+#Annotation
+anno <- read.delim(file = "/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.functional_annotation.txt", header = FALSE, sep = "\t", col.names = c("gene", "functional_annotation"))
+#Don't remove transcript syntax because I want to select only the representative transcript
+#anno$gene <- gsub("\\.\\d+$", "", anno$gene)
+head(anno)
+nrow(anno) #172819
+anno <- anno %>% rename(gene_ID = gene)
+
+##Read in repr gff file
+working_models <- read.gff("/work/crblab/ac05869/genomes/mitr_v1.working_models.repr.gff3", na.strings = c(".", "?"), GFF3 = TRUE)
+head(working_models)
+#parse apart attributes column
+head(attributes <- working_models$attributes)
+head(parsed_attributes <- strsplit(attributes, ";"))
+extract_attribute_value <- function(attribute_list, key) {
+  key_value <- grep(paste0("^", key, "="), attribute_list, value = TRUE)
+  if (length(key_value) > 0) {
+    return(sub(paste0("^", key, "="), "", key_value))
+  } else {
+    return(NA)
+  }
+}
+working_models$Name <- sapply(parsed_attributes, extract_attribute_value, key = "Name")
+working_models$ID <- sapply(parsed_attributes, extract_attribute_value, key = "ID")
+working_models$Parent <- sapply(parsed_attributes, extract_attribute_value, key = "Parent")
+
+working_models2 <- working_models %>%
+  select(c(ID, seqid, type, start, end, strand)) %>% 
+  filter(type == "mRNA") %>%
+  rename(chr = seqid) %>%
+  rename(gene_ID = ID)
+#working_models2$gene <- gsub("\\.\\d+$", "", working_models2$gene) #Don't remove transcript syntax yet. Need to select repr transcript in annotation file
+head(working_models2)
+dim(working_models2) #103160
+
+repr_anno <- anno %>%
+  right_join(working_models2, by = "gene_ID") %>%
+  rename("gene" = "gene_ID") %>%
+  mutate(gene_ID = gsub("\\.\\d+$", "", gene)) %>%
+  mutate(gene_ID = gsub("_", "-", gene_ID))
+dim(repr_anno)#103160
+
+write_delim(repr_anno, file = "/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.working_models.repr.functional_annotation.txt")
+repr_anno <- read_delim(file = "/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.working_models.repr.functional_annotation.txt")
+
+
+## genes 
+pathway_genes <- read_delim("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/pathway_genes_allwins_and_cro_orthologs.tsv") #contains both cro orthologs and allwins best hits
+pathway_genes <- pathway_genes %>%
+  left_join(repr_anno, by = "gene_ID")
+#write_delim(pathway_genes, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/annotated_kratom_pathway.tsv", delim = "\t")
+pathway_genes <- read_delim(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/annotated_kratom_pathway.tsv")
+rev_pathway_genes <- pathway_genes[order(nrow(pathway_genes):1),]
+head(rev_pathway_genes)
+
+Baits <- read_delim("/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/allwin_goi_top_blast.txt", delim = "\t")
+Baits <- Baits %>% left_join(repr_anno, by = "gene_ID")
+head(Baits)
+#write_delim(Baits, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/annotated_allwin_goi_top_blast.txt")
+Baits <- read_delim(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/annotated_allwin_goi_top_blast.txt")
+```
+#Load pathway genes
+```{r}
+repr_anno <- read_delim(file = "/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.working_models.repr.functional_annotation.txt")
+Baits <- read_delim(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/annotated_allwin_goi_top_blast.txt")
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+Baits$gene_ID <- gsub(pattern = "_", replacement = "-", x = Baits$gene_ID)
+# remove transcript ID so it matches the seurat genes
+Baits$gene_ID <- gsub("\\.\\d+$", "", x = Baits$gene_ID)
+pathway_genes <- read_delim(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/annotated_kratom_pathway.tsv")
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+pathway_genes$gene_ID <- gsub(pattern = "_", replacement = "-", x = pathway_genes$gene_ID)
+# remove transcript ID so it matches the seurat genes
+pathway_genes$gene_ID <- gsub("\\.\\d+$", "", x = pathway_genes$gene_ID)
+rev_pathway_genes <- pathway_genes[order(nrow(pathway_genes):1),]
+head(rev_pathway_genes)
+```
+
+```{r}
+Exp_table_long_averaged <- Exp_table %>%
+  as.data.frame() %>%
+  rownames_to_column("gene_ID") %>% 
+  pivot_longer(cols = !gene_ID, names_to = "cluster", values_to = "avg_exp") 
+head(Exp_table_long_averaged)
+```
+
+## Z score
+It standardize the expression pattern of each gene to mean = 0, sd = 1. It is not absolutely necessary, but I have found including this step to produce results that better capture the underlying biology.
+```{r}
+Exp_table_long_averaged_z <- Exp_table_long_averaged %>% 
+  group_by(gene_ID) %>% 
+  mutate(z.score = (avg_exp - mean(avg_exp))/sd(avg_exp)) %>% 
+  ungroup()
+
+head(Exp_table_long_averaged_z)
+```
+## Gene-wise correlation
+
+Now we can correlate each gene to every other gene. The essence of this workflow is simple, so we will use a simple correlation. If you want, you can use fancier methods such as GENIE3
+
+We will use the cor() function in R. But the cor() only take vector or matrix as input, so we need to go from long to wide again.
+
+```{r}
+#need wide z-score
+z_score_wide <- Exp_table_long_averaged_z %>% 
+  select(gene_ID, cluster, z.score) %>% 
+  pivot_wider(names_from = cluster, values_from = z.score) %>% 
+  as.data.frame()
+
+row.names(z_score_wide) <- z_score_wide$gene_ID
+head(z_score_wide)
+
+number_of_clusters <- ncol(z_score_wide) - 1
+number_of_clusters #22
+
+```
+
+# Generate Edge Table for Co-expression networks with > 30,000 genes
+
+```{r}
+cor_matrix <- cor(t(z_score_wide[, -1]))
+dim(cor_matrix) #75499
+```
+
+Before we select edges (correlations), we need to deal with some redundant data. The correlation matrix is symmetrical along its diagonal. The diagonal will be 1, because it is correlating with itself. Everything else appears twice. We can take care of that by setting the upper (or lower) triangle of this matrix to NA. This step can take a while. The larger the matrix, the slower it is.
+
+```{r}
+cor_matrix_upper_tri <- cor_matrix
+cor_matrix_upper_tri[lower.tri(cor_matrix_upper_tri)] <- NA
+
+# Create an empty dataframe to store the results
+edge_table <- data.frame()
+
+chunk_size <- 1000  # Define the chunk size
+
+num_rows <- nrow(cor_matrix_upper_tri) #number of rows in correlation matrix
+num_chunks <- ceiling(num_rows / chunk_size) # number of chunks for data set
+
+for (i in 1:num_chunks) {
+  start <- (i - 1) * chunk_size + 1 
+  end <- min(i * chunk_size, num_rows)
+  
+  # Extract a chunk of rows
+  chunk <- cor_matrix_upper_tri[start:end, ]
+  
+  #Wide to long form
+  chunk <- chunk %>%
+    as.data.frame() %>%
+    mutate(from = row.names(chunk)) %>%
+    pivot_longer(cols = !from, names_to = "to", values_to = "r") %>%
+    filter(is.na(r) == F) %>%
+    filter(from != to)
+  
+  chunk <- chunk %>%
+  mutate(t = r*sqrt((number_of_clusters-2)/(1-r^2))) %>%
+  mutate(p.value = case_when(
+    t > 0 ~ pt(t, df = number_of_clusters-2, lower.tail = F),
+    t <=0 ~ pt(t, df = number_of_clusters-2, lower.tail = T)
+  )) %>%
+  mutate(FDR = p.adjust(p.value, method = "fdr"))
+  
+  chunk <-chunk %>% 
+  filter(r > 0) %>% 
+  filter(FDR < 0.05)
+  
+  # Add the processed chunk to the result dataframe
+  edge_table <- bind_rows(edge_table, chunk)
+  
+  # Print the current process
+  cat("Processed chunk", i, "of", num_chunks, "\n")
+}
+
+#saveRDS(edge_table, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/leaf_edge_table_pos_corr_p0.05.rds")
+edge_table <- readRDS(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/leaf_edge_table_pos_corr_p0.01.rds")
+dim(edge_table2) #35200647
+```
+
+
+You can look at various adjusted p value cutoffs and the corresponding r value before proceeding. Let's say we just look at positively correlated genes.
+I already filtered at FDR < 0.01 in order to process the chuncks above, because the dataframe was too big for R
+```{r}
+edge_table %>% 
+  filter(r > 0) %>% 
+  filter(r > 0.65) %>% 
+  slice_min(order_by = abs(r), n = 10)
+
+edge_table %>% 
+  filter(r > 0) %>% 
+  filter(FDR < 0.05) %>% 
+  slice_min(order_by = abs(r), n = 10)
+```
+
+
+> FDR cutoff at 0.01, r values are 0.6459088  or larger
+> cutoff at 0.05, r values are 0.5570972 or larger
+
+### Empirical determination using bait genes and rank distribution 
+If I go into this analysis not knowing any biology, then I would proceed with a t approximation followed by some p value cutoff.
+I think in real life, this is hardly the case. We usually know something a priori. 
+This is where bait genes can be helpful. 
+You can use the bait genes to determine the cutoff if you know two bait genes are involved in the same process. 
+The underlying assumption is if two bait genes are involved in the same process, they might be co-expressed. 
+Because this selection method is based on empirical observations, I argue this is better than using an arbitrary p value cutoff. 
+> Skip this until after filtering the edge_table so it doesn't crash
+
+
+You can also look at the distribution of r values. 
+Won't work in this case, because I already filtered
+```{r}
+edge_table %>% 
+  slice_sample(n = 20000) %>% 
+  ggplot(aes(x = r)) +
+  geom_histogram(color = "white", bins = 100) +
+  geom_vline(xintercept = 0.7, color = "tomato1", linewidth = 1.2) +
+  theme_classic() +
+  theme(
+    text = element_text(size = 14),
+    axis.text = element_text(color = "black")
+  )
+
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/r_histogram_r.7.svg", height = 3.5, width = 5, bg = "white")
+#ggsave("/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/r_histogram_r.7.png", height = 3.5, width = 5, bg = "white")
+```
+
+Cutoff at r = 0.7
+
+Note that there are many negatively correlated genes, we can look at those at well.
+But for the sake of this example, let's just look at positively correlated genes. 
+
+#Create edge table
+```{r}
+edge_table_select <- edge_table #I don't want to filter it any more than I did
+
+dim(edge_table_select)#35200647 for edges p<0.01; 72531411 for p<0.05
+head(edge_table_select)
+#saveRDS(edge_table_select, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/UGA_leaf_edge_table_select_p0.05.rds")
+edge_table_select2 <- readRDS(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/UGA_leaf_edge_table_select_p0.05.rds")
+#saveRDS(edge_table_select, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/UGA_leaf_edge_table_select_p0.01.rds")
+edge_table_select <- readRDS("/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/UGA_leaf_edge_table_select_p0.01.rds")
+
+```
+
+> We are now down to 72531411 edges (for p<0.05 dataset), and 35200647 for p<0.01 dataset
+
+--- left off here
+
+### Check bait genes after filtering for high correlated genes
+```{r}
+head(Baits)
+edge_table_select %>%
+  filter(str_detect(from, "Mitsp.v1.11-1G000250") & #enolMT
+           str_detect(to,"Mitsp.v1.10-2G022130") | #CO1
+         str_detect(from, "Mitsp.v1.10-2G022130") &
+           str_detect(to,"Mitsp.v1.11-1G000250")) 
+#None
+edge_table_select %>%
+  filter(str_detect(from, "Mitsp.v1.11-1G000250") & #enolMT
+           str_detect(to,"Mitsp.v1.10-1G021390") | #CO2
+         str_detect(from, "Mitsp.v1.10-1G021390") &
+           str_detect(to,"Mitsp.v1.11-1G000250")) 
+#None
+edge_table_select %>%
+  filter(str_detect(from, "Mitsp.v1.11-1G000250") & #enolMT
+           str_detect(to,"Mitsp.v1.01-2G031870") | #THAS
+         str_detect(from, "Mitsp.v1.01-2G031870") &
+           str_detect(to,"Mitsp.v1.11-1G000250")) 
+#None
+edge_table_select %>%
+  filter(str_detect(from, "Mitsp.v1.10-2G022130") & #CO1
+           str_detect(to,"Mitsp.v1.10-2G012340") | #DCR2
+         str_detect(from, "Mitsp.v1.10-2G012340") &
+           str_detect(to,"Mitsp.v1.10-2G022130")) 
+#None between CO1 and DCR1 haplotypes 1 and 2, or with DCR2
+
+edge_table_select %>%
+  filter(str_detect(from, "Mitsp.v1.10-1G021390") & #CO2
+           str_detect(to,"Mitsp.v1.10-2G012340") | #DCR2
+         str_detect(from, "Mitsp.v1.10-2G012340") &
+           str_detect(to,"Mitsp.v1.10-1G021390")) 
+#None between CO2 and DCR1, but 0.6738474 corr with DCR2
+
+edge_table_select %>%
+  filter(str_detect(from, "Mitsp.v1.10-1G010980") & #DCR1
+           str_detect(to,"Mitsp.v1.18-2G016770") | #SAS
+         str_detect(from, "Mitsp.v1.18-2G016770") &
+           str_detect(to,"Mitsp.v1.10-1G010980")) 
+#0.7045289	
+
+edge_table_select %>%
+  filter(str_detect(from, "Mitsp.v1.18-2G016770") & #SAS
+           str_detect(to,"Mitsp.v1.10-2G012340") | #DCR2
+         str_detect(from, "Mitsp.v1.10-2G012340") &
+           str_detect(to,"Mitsp.v1.18-2G016770")) 
+#0.7937364
+
+```
+
+
+
+coexpression notes:
+>enolMT has no correlation with CO1, CO2, or THAS (because they are in different cell types)
+>correlations pairwise between CO1, CO2, and DCR1, DCR2 have only correlation between CO2 and DCR2 (0.6738474)
+>DCR1 and DCR2 have correlations with SAS (DCR2 is higher at 0.7937364)
+>
+
+## Module detection
+The main goal of a gene co-expression analysis to detect gene co-expression modules, groups of highly co-expressed genes. 
+We will be the Leiden algorithm to detect module, which is a graph based clustering method. 
+The Leiden method produces clusters in which members are highly interconnected. 
+In gene co-expression terms, it looks for groups of genes that are highly correlated with each other. 
+If you are interested, you can read more about it in this [review](https://www.nature.com/articles/s41598-019-41695-z ).
+
+### Build graph object 
+We will be using `igraph` to do some of the downstream analyses. It will do a lot of the heavy lifting for us. 
+While you can get Leiden as a standalone package, Leiden is also part of the `igraph` package. 
+The first thing to do is producing a graph object, also known as a network object. 
+
+To make a graph object, you need a edge table. 
+We already made that, which is `edge_table_select`, a edge table that we filtered based on some kind of r cutoff. 
+Optionally, we can also provide a node table, which contains information about all the nodes present in this network. 
+We can make that. 
+
+We need to two things. 
+
+1. Non-redundant gene IDs from the edge table
+2. Functional annotation, which I [downloaded](http://spuddb.uga.edu/m82_uga_v1_download.shtml ).
+```{r}
+mitr_v1.funct_anno <- repr_anno #(/scratch/ac05869/nih/kratom/mitr_v1_anno/mitr_v1.working_models.repr.functional_annotation.txt)
+mitr_v1.funct_anno$gene_ID <- gsub(pattern = "_", replacement = "-", mitr_v1.funct_anno$gene_ID)
+mitr_v1.funct_anno$gene_ID <- gsub("\\.\\d+$", "", mitr_v1.funct_anno$gene_ID)
+
+head(mitr_v1.funct_anno)
+```
+
+
+
+```{r}
+node_table <- data.frame(
+  gene_ID = c(edge_table_select$from, edge_table_select$to) %>% 
+    unique()
+  ) %>% 
+  left_join(mitr_v1.funct_anno, by = "gene_ID")
+
+node_table2 <- data.frame(
+  gene_ID = c(edge_table_select2$from, edge_table_select2$to) %>% 
+    unique()
+  ) %>% 
+  left_join(mitr_v1.funct_anno, by = "gene_ID")
+
+head(node_table)
+dim(node_table) #75463 for p<0.01 dataset, 
+dim(node_table2) #75469 for p<0.05 dataset, 
+
+saveRDS(node_table2, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/Integrated_leaf_node_table_p0.05.rds")
+saveRDS(node_table, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/Integrated_leaf_node_table_p0.01.rds")
+
+node_table <- readRDS(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/Integrated_leaf_node_table_p0.01.rds")
+```
+
+> We have 75463 genes in this network, along with 35200647 edges (p<0.01)
+Now let's make the network object. 
+
+```{r}
+my_network <- graph_from_data_frame(
+  edge_table_select,
+  vertices = node_table,
+  directed = F
+)
+
+#saveRDS(my_network, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/Integrated_leaf_network_p0.05.rds")
+#my_network <- readRDS("/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/Integrated_leaf_network_p0.05.rds")
+saveRDS(my_network, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/Integrated_leaf_network_p0.01.rds")
+my_network <- readRDS("/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/Integrated_leaf_network_p0.01.rds")
+```
+
+`graph_from_data_frame()` is a function from the `igraph` package. 
+It takes your edge table and node table and produce a graph (aka network) from it. 
+Note that I selected the `directed = F` argument, because we made our network using correlation.
+Correlation is non-directional, because cor(A,B) = cor(B,A). 
+
+### What is the optimal resolution for module detection? 
+The optimal resolution for module detection differs between networks. 
+A key factor that contributes to the difference in optimal resolution is to what extent are nodes inter-connected. 
+
+Since this is a simple workflow, we can determine the optimal resolution using heuristics. 
+We can test a range of resolutions and monitor two key performance indexes:
+
+1. Optimize number of modules that have >= 5 genes.
+2. Optimize number of genes that are contained in modules that have >= 5 genes. 
+
+Because: 
+
+* Too low resolution leads to forcing genes with different expression patterns into the same module.
+* Too high resolution leads to many genes not contained in any one module. 
+
+```{r}
+optimize_resolution <- function(network, resolution){
+  modules = network %>% 
+    cluster_leiden(resolution = resolution,
+                   objective_function = "modularity")
+  
+  parsed_modules = data.frame(
+    gene_ID = names(membership(modules)),
+    module = as.vector(membership(modules)) 
+    )
+  
+  num_module_5 = parsed_modules %>% 
+    group_by(module) %>% 
+    count() %>% 
+    arrange(-n) %>% 
+    filter(n >= 5) %>% 
+    nrow() %>% 
+    as.numeric()
+  
+  num_genes_contained = parsed_modules %>% 
+    group_by(module) %>% 
+    count() %>% 
+    arrange(-n) %>% 
+    filter(n >= 5) %>% 
+    ungroup() %>% 
+    summarise(sum = sum(n)) %>% 
+    as.numeric()
+  
+  cbind(num_module_5, num_genes_contained) %>% 
+    as.data.frame()
+
+}
+```
+
+Here I wrote a function to detect module, pull out number of modules that have >= 5 genes, and count number of genes contained in modules that have >= 5 genes. All in one function. 
+
+Then I can test a list of resolutions in this function. 
+Let's test a range of resolution from 0.25 to 5, in steps of 0.25.  
+```{r}
+optimization_results <- purrr::map_dfr(
+  .x = seq(from = 0.25, to = 5, by = 0.25),
+  .f = optimize_resolution, 
+  network = my_network
+) %>% 
+  cbind(
+   resolution = seq(from = 0.25, to = 5, by = 0.25)
+  ) %>% 
+  as.data.frame() %>% 
+  rename(num_module = num_module_5,
+         num_contained_gene = num_genes_contained)
+
+head(optimization_results)
+```
+
+This could take a while. 
+We have the results organized into one tidy data table. We can graph it. 
+```{r}
+Optimize_num_module <- optimization_results %>% 
+  ggplot(aes(x = resolution, y = num_module)) +
+  geom_line(linewidth = 1.1, color = "dodgerblue2") +
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2, size = 1, linetype = 4) +
+  labs(x = "resolution parameter",
+       y = "num. modules\nw/ >=5 genes") +
+  theme_classic() +
+  theme(
+    text = element_text(size = 14),
+    axis.text = element_text(color = "black")
+  )
+
+Optimize_num_gene <- optimization_results %>% 
+  ggplot(aes(x = resolution, y = num_contained_gene)) +
+  geom_line(linewidth = 1.1, color = "violetred2") +
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2, size = 1, linetype = 4) +
+  labs(x = "resolution parameter",
+       y = "num. genes in\nmodules w/ >=5 genes") +
+  theme_classic() +
+  theme(
+    text = element_text(size = 14),
+    axis.text = element_text(color = "black")
+  )
+
+wrap_plots(Optimize_num_module, Optimize_num_gene, nrow = 2)
+
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/Optimize_resolution.svg", height = 5, width = 3.2, bg ="white")
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/Optimize_resolution.png", height = 5, width = 3.2, bg ="white")
+```
+
+You can see that there is a big jump for num. modules w/ >= 5 genes going from # to # resolution.
+The number of modules stabilizes at resolution >=#
+However, if you look at number of contained genes, the story is a little different. 
+The number of contained genes is very stable until resolution > 2.5, after which the number of genes continues to diminish. 
+
+> In this case going with res. = 2
+
+### Graph based clustering
+The next step is detect modules from the graph object. 
+```{r}
+modules <- cluster_leiden(my_network, resolution = 2, 
+                          objective_function = "modularity")
+
+```
+
+`cluster_leiden()` runs the Leiden algorithm for you. 
+`resolution_parameter` controls how many clusters you will get. The larger it is, the more clusters. 
+You can play around with the resolution and see what you get. 
+The underlying math of `objective_function` is beyond me, but it specifies how the modules are computed. 
+
+Let's say we move on with module detection using a resolution of # 
+Next, we need to link the module membership to the gene IDs.
+```{r}
+my_network_modules <- data.frame(
+  gene_ID = names(membership(modules)),
+  module = as.vector(membership(modules)) 
+) %>% 
+  inner_join(node_table, by = "gene_ID")
+
+my_network_modules %>% 
+  group_by(module) %>% 
+  count() %>% 
+  arrange(-n) %>% 
+  filter(n >= 5)
+
+my_network_modules %>% 
+  group_by(module) %>% 
+  count() %>% 
+  arrange(-n) %>% 
+  filter(n >= 5) %>% 
+  ungroup() %>% 
+  summarise(sum = sum(n))
+
+```
+
+Looks like there are ~16 modules that have 5 or more genes, comprising ~75469 genes.
+
+Not all genes are contained in modules. They are just lowly connected genes. 
+
+Note that Leiden clustering has a stochastic aspect. The membership maybe slightly different every time you run it. 
+Moving forward we will only use modules that have 5 or more genes. 
+
+```{r}
+module_5 <- my_network_modules %>% 
+  group_by(module) %>% 
+  count() %>% 
+  arrange(-n) %>% 
+  filter(n >= 5)
+
+my_network_modules <- my_network_modules %>% 
+  filter(module %in% module_5$module) %>%
+  select(gene_ID, module)
+
+head(my_network_modules)
+#View(my_network_modules)
+
+saveRDS(my_network_modules, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/my_network_modules_5_genes.rds")
+```
+
+```{r}
+my_network_modules <- readRDS(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/my_network_modules_5_genes.rds")
+```
+
+### Module quality control
+We have a bunch of different modules now, how do we know if they make any sense? 
+One way to QC these modules is looking at our bait genes. 
+#Filter edge table and save to hard drive
+```{r}
+#from, to, r, t, p.value, FDR, from func. anno, to func. anno, from module, to module, pathway gene from, pathway gene to, 
+head(edge_table_select)
+head(mitr_v1.funct_anno)
+Baits2 <- Baits %>% select(gene_ID, order, tag)
+
+edge_table_select_filtered <- edge_table_select %>%
+  filter(from %in% Baits$gene_ID | to %in% Baits$gene_ID) #%>%
+dim(edge_table_select_filtered) #7936
+
+edge_table_select_filtered2 <- edge_table_select2 %>%
+  filter(from %in% Baits$gene_ID | to %in% Baits$gene_ID) #%>%
+dim(edge_table_select_filtered2) #21349
+```
+
+
+```{r}
+edge_table_select_p0.01_annotated <- edge_table_select_filtered %>%
+  left_join(mitr_v1.funct_anno, join_by("from"=="gene_ID")) %>%
+  rename(from_annotation = functional_annotation) %>%
+  rename(from_chr = chr)%>%
+  rename(from_start = start)%>%
+  rename(from_end = end)%>%
+  rename(from_strand = strand) %>%
+  left_join(Baits2, join_by("from"=="gene_ID")) %>%
+  left_join(my_network_modules, join_by("from"=="gene_ID")) %>%
+  rename(from_module = module) %>%
+  rename(from_pathway = tag) %>%
+#  select(from, from_annotation, from_module, from_pathway, to, r, t, p.value, FDR) %>%
+  left_join(mitr_v1.funct_anno, join_by("to"=="gene_ID")) %>%
+  rename(to_annotation = functional_annotation) %>%
+  rename(to_chr = chr)%>%
+  rename(to_start = start)%>%
+  rename(to_end = end)%>%
+  rename(to_strand = strand) %>%
+  left_join(Baits2, join_by("to"=="gene_ID")) %>%
+  rename(to_pathway = tag) %>%
+  left_join(my_network_modules, join_by("to"=="gene_ID")) %>%
+  rename(to_module = module) %>%
+  select(from, from_annotation, from_module, from_pathway, to, to_annotation, to_module, to_pathway, r, t, p.value, FDR, from_chr, from_start, from_end, from_strand, to_chr, to_start, to_end, to_strand)
+
+write_excel_csv(edge_table_select_p0.01_annotated, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/edge_table_select_p0.01_pathway_genes_28July25.csv", col_names = T)
+edge_table_select_p0.01_annotated <- read_delim(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/edge_table_select_p0.01_pathway_genes_28July25.csv", delim = ",")
+
+edge_table_select_p0.05_annotated <- edge_table_select_filtered2 %>%
+  left_join(mitr_v1.funct_anno, join_by("from"=="gene_ID")) %>%
+  rename(from_annotation = functional_annotation) %>%
+  rename(from_chr = chr)%>%
+  rename(from_start = start)%>%
+  rename(from_end = end)%>%
+  rename(from_strand = strand) %>%
+  left_join(Baits2, join_by("from"=="gene_ID")) %>%
+  left_join(my_network_modules, join_by("from"=="gene_ID")) %>%
+  rename(from_module = module) %>%
+  rename(from_pathway = tag) %>%
+#  select(from, from_annotation, from_module, from_pathway, to, r, t, p.value, FDR) %>%
+  left_join(mitr_v1.funct_anno, join_by("to"=="gene_ID")) %>%
+  rename(to_annotation = functional_annotation) %>%
+  rename(to_chr = chr)%>%
+  rename(to_start = start)%>%
+  rename(to_end = end)%>%
+  rename(to_strand = strand) %>%
+  left_join(Baits2, join_by("to"=="gene_ID")) %>%
+  rename(to_pathway = tag) %>%
+  left_join(my_network_modules, join_by("to"=="gene_ID")) %>%
+  rename(to_module = module) %>%
+  select(from, from_annotation, from_module, from_pathway, to, to_annotation, to_module, to_pathway, r, t, p.value, FDR, from_chr, from_start, from_end, from_strand, to_chr, to_start, to_end, to_strand)
+
+write_excel_csv(edge_table_select_p0.05_annotated, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/edge_table_select_p0.05_pathway_genes_24July25.csv", col_names = T)
+edge_table_select_p0.05_annotated <- read_delim(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/edge_table_select_p0.05_pathway_genes_24July25.csv", delim = ",")
+```
+
+
+```{r}
+head(Baits)
+(Iridoids <- my_network_modules %>% 
+  filter(gene_ID == "Mitsp.v1.21-2G006690" | #Iridoid MsLAMT, first switch of clusters from MEP
+           gene_ID == "Mitsp.v1.16-2G020400" | #SLTr
+           gene_ID == "Mitsp.v1.21-1G011770" | #STR
+           gene_ID == "Mitsp.v1.12-1G013480")) #STRtr
+
+(GOI_1 <- my_network_modules %>% 
+  filter(gene_ID == "Mitsp.v1.10-1G015530" | ##MsDCS2 (MIA)
+           gene_ID == "Mitsp.v1.10-1G015520" | ##MsDCS1 (MIA)
+           gene_ID == "Mitsp.v1.18-2G016780" | ##MsSAS (MIA)
+           gene_ID == "Mitsp.v1.10-2G022130" | ##MsCO1.1 (MIA)
+           gene_ID == "Mitsp.v1.10-1G021390" | ##MsCO1.2 (MIA)
+           gene_ID == "Mitsp.v1.10-1G021550" | ##MsCO1.3 (MIA)
+           gene_ID == "Mitsp.v1.08-2G007110" | ##Ms10H
+           gene_ID == "Mitsp.v1.10-1G010920" | ##MsDCR1
+           gene_ID == "Mitsp.v1.10-2G012340")) ##MsDCR2
+
+(bait_0_17 <- my_network_modules %>%
+    filter(gene_ID == "Mitsp.v1.18-2G016780" | #MsSAS 
+             gene_ID == "Mitsp.v1.10-1G010920" | #MsDCR1
+             gene_ID == "Mitsp.v1.10-2G012340" |#MsDCR2
+gene_ID == "Mitsp.v1.22-2G007110" | #Ms10H
+gene_ID == "Mitsp.v1.10-2G022130" |# ~ "MsCO1.1",
+gene_ID == "Mitsp.v1.10-1G021390" | # ~ "MsCO1.2",
+gene_ID == "Mitsp.v1.10-1G021550")) # ~ "MsCO1.3")
+
+
+(bait_21 <- my_network_modules %>%
+  filter(gene_ID == "Mitsp.v1.21-1G011770" |  # "STR"
+  gene_ID == "Mitsp.v1.10-1G015530" |  # ~ "MsDCS1",
+  gene_ID == "Mitsp.v1.10-1G015520" |  # ~ "MsDCS2",
+  gene_ID == "Mitsp.v1.02-1G013220" |  # ~ "MsSGD",
+  gene_ID == "Mitsp.v1.11-1G000250"
+  ))#MsEnolMT
+
+
+
+```
+
+If they are highly correlated, then they are in the same module
+
+## Module-treatment correspondance
+The next key task is understanding the expression pattern of the clusters. 
+Again, the essence of this workflow is simple, so we will use a simple method: peak expression.
+To do that, we append the module membership data back to the long table containing z scores. 
+
+```{r}
+Exp_table_long_averaged_z_modules <- Exp_table_long_averaged_z %>% 
+  inner_join(my_network_modules, by = "gene_ID") %>%
+  left_join(mitr_v1.funct_anno, join_by(gene_ID))
+  
+head(mitr_v1.funct_anno)
+head(Exp_table_long_averaged_z_modules)
+#View(Exp_table_long_averaged_z_modules)
+```
+
+```{r}
+#Annotate clusters by cell type
+Exp_table_long_averaged_z_modules <- Exp_table_long_averaged_z_modules %>%
+    mutate(cell_type = case_when(
+    cluster == 0 | 
+      cluster == 2 | 
+      cluster == 4 |
+      cluster == 6 | 
+      cluster == 12 ~ "Mesophyll",
+    cluster == 1 | 
+      cluster == 8 |
+      cluster == 10 | 
+      cluster == 16 ~ "Epidermis",
+      cluster == 3 |
+      cluster == 5 |
+      cluster == 15  |
+      cluster == 17 |
+      cluster == 21  ~ "Vasculature",
+    cluster == 9 |
+      cluster == 11 ~ "Proliferating",
+    cluster == 19 ~ "IPAP",
+      cluster == 13 ~ "Guard cells",
+    T ~ "Unassigned"))
+    
+Exp_table_long_averaged_z_modules
+
+#--_excel_csv(Exp_table_long_averaged_z_modules, "/scratch/ac05869/MIT_KRT_sc_analysis/coexp_out/Exp_table_long_averaged_z_modules_r0.7_3res.csv")
+```
+
+Now we can produce summary statistics for each cluster and look at their expression pattern using mean. 
+```{r}
+modules_mean_z <- Exp_table_long_averaged_z_modules %>% 
+  group_by(module, cluster, cell_type) %>% 
+  summarise(mean.z = mean(z.score)) %>% 
+  ungroup()
+
+head(modules_mean_z)
+#View(modules_mean_z)
+
+modules_mean_z2 <- Exp_table_long_averaged_z_modules %>% 
+  group_by(cluster, module, cell_type) %>% 
+  summarise(mean.z = mean(z.score)) %>% 
+  ungroup()
+
+head(modules_mean_z2)
+#View(modules_mean_z2)
+```
+
+Then we look at at which cluster is each module most highly expressed. 
+```{r}
+module_peak_exp <- modules_mean_z %>% 
+  group_by(cluster) %>% 
+  group_by(module) %>% #added this because some modules did not have peak expression when only grouped by cluster
+  slice_max(order_by = mean.z, n = 1)
+
+module_peak_exp
+#View(module_peak_exp)
+```
+Again, `group_by()` is doing a lot of heavy lifting here. 
+
+### More module QC
+You can also QC the clusters via a line graph
+> Notes
+
+```{r}
+ggplot(Exp_table_long_averaged_z_modules, aes(x=cluster, y=z.score)) +
+  geom_line(aes(group = gene_ID), color = "grey70") +
+  geom_line(
+    data = modules_mean_z,
+    aes(y = mean.z, group = module), 
+   linewidth = 1.1
+  ) +
+  labs(x = NULL,
+       y = "z score") +
+  theme_classic() +
+  facet_wrap( ~ module, ncol = 4) +
+  theme(
+    text = element_text(size = 12),
+    axis.text = element_text(color = "black"),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 8),
+    panel.spacing = unit(1, "line")
+  )
+
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/module_line_plots_2res.svg", height = 4, width = 10, bg = "white")
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/module_line_plots_2res.png", height = 4, width = 10, bg = "white")
+```
+
+### Heat map representation of clusters 
+A good way to present these modules is to make a heat map. 
+To make an effective heatmap though, we need to take care of a few things.
+
+* reorder x and y axis
+* take care of outliers 
+
+#### Check outliers 
+Let's take care of outliers first 
+```{r}
+modules_mean_z$mean.z %>% summary()
+
+quantile(modules_mean_z$mean.z, 0.95)
+```
+You can see that the distribution of averaged z scores are more or less symmetrical from the 1st to 3rd quartiles. 
+
+The 95th percentile of averaged z score is 1.447974 . We can probably roughly clipped the z-scores at 1.5 or -1.5
+
+> 1.45, clipped at 1.5
+
+```{r}
+modules_mean_z <- modules_mean_z %>% 
+  mutate(mean.z.clipped = case_when(
+    mean.z > 1.5 ~ 1.5,
+    mean.z < -1.5 ~ -1.5,
+    T ~ mean.z
+  ))
+
+head(modules_mean_z)
+```
+
+> This sets z scores > 1.5 or < -1.5 to 1.5 or -1.5, respectively. The rest remain unchanged.  
+
+#### Reorder rows and columns 
+Let's say we graph modules on y axis, and stage/tissue (cluster) on x-axis.
+Reordering columns are easy, we just do it by hand. 
+We already did it before. We can copy and paste that down here. 
+```{r}
+modules_mean_z2 <- modules_mean_z %>% 
+#  mutate(cluster = factor(cluster, levels = c(0:22))) %>%
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Vasculature",
+                              "Proliferating", "IPAP", "Unassigned"
+                            ))) %>% 
+  mutate(cluster = factor(cluster, levels = c(
+     "0", "2", "4", "6", "12", #M
+    "1","8", "10", "16", #Epi
+    "3", "5", "15", "17", "21", #vasculature
+   "9", "11", #prolif
+    "13", #Guard cells
+   "19", ##IPAP
+    "7", "14", "18", "20" #Unknown
+  )))
+head(modules_mean_z2)
+```
+
+```{r}
+my_data_peak_values <- modules_mean_z2 %>% 
+  group_by(cluster) %>% #this used to be module
+  slice_max(order_by = mean.z, n = 1, with_ties = F) %>% 
+  rename(peaked_at = cluster) %>% 
+  select(-mean.z, cell_type)
+
+head(my_data_peak_values)
+
+number_of_peaks <- my_data_peak_values %>% 
+  group_by(peaked_at) %>% 
+  count() %>% 
+  arrange(-n)
+head(number_of_peaks)
+
+my_data_peak_values_reordered <- my_data_peak_values %>% 
+  inner_join(number_of_peaks, by = "peaked_at") %>% 
+  arrange(-n)  
+my_data_peak_values_reordered
+
+my_data_reordered <- modules_mean_z2 %>% 
+  inner_join(number_of_peaks, by = c("cluster" = "peaked_at")) %>% 
+  mutate(cluster = reorder(cluster, -n)) %>%  # this reorders the columns
+  select(-n) %>% 
+  inner_join(my_data_peak_values_reordered, by = "module", multiple = "first") %>% 
+  mutate(peaked_at = reorder(peaked_at, -n)) %>% 
+  mutate(order_rows = as.numeric(peaked_at)) %>% 
+  mutate(module = reorder(module, -order_rows)) # this reorders the rows by the "peaked_at" column. 
+head(my_data_reordered)
+
+module_heatmap <- my_data_reordered %>% 
+  ggplot(aes(x = cluster, y = module)) +
+  geom_tile(aes(fill = mean.z.clipped.x), color = "grey80") +
+  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-1.5, 1.5),
+                       breaks = c(-1.5, 0, 1.5), labels = c("< -1.5", "0", "> 1.5")) +
+  labs(fill = "mean.z") +
+  theme_classic() +
+  theme(
+    text = element_text(size = 16),
+    axis.text = element_text(color = "black"),
+    axis.text.x = element_text(color = "black"),
+    strip.text = element_blank(),
+    legend.position = "top",
+    panel.spacing = unit(0.5, "lines") 
+  )
+
+module_heatmap
+```
+
+```{r}
+my_data_peak_values2 <- modules_mean_z2 %>% 
+  group_by(cluster) %>%
+  group_by(module) %>%
+  slice_max(order_by = mean.z, n = 1, with_ties = F) %>% 
+  rename(peaked_at = cluster) %>% 
+  select(-mean.z, cell_type)
+
+head(my_data_peak_values2)
+
+number_of_peaks2 <- my_data_peak_values2 %>% 
+  group_by(peaked_at) %>% 
+  count() %>% 
+  arrange(-n)
+head(number_of_peaks2)
+
+my_data_peak_values_reordered2 <- my_data_peak_values2 %>% 
+  inner_join(number_of_peaks2, by = "peaked_at") %>% 
+  arrange(-n)  
+my_data_peak_values_reordered2
+
+my_data_reordered2 <- modules_mean_z2 %>% 
+  inner_join(number_of_peaks, by = c("cluster" = "peaked_at")) %>% 
+  mutate(cluster = reorder(cluster, -n)) %>%  # this reorders the columns
+  select(-n) %>% 
+  inner_join(my_data_peak_values_reordered2, by = "module") %>% 
+  mutate(peaked_at = reorder(peaked_at, -n)) %>% 
+  mutate(order_rows = as.numeric(peaked_at)) %>% 
+  mutate(module = reorder(module, -order_rows)) # this reorders the rows by the "peaked_at" column. 
+head(my_data_reordered2)
+
+module_heatmap2 <- my_data_reordered2 %>% 
+  ggplot(aes(x = cluster, y = module)) +
+  geom_tile(aes(fill = mean.z.clipped.x), color = "grey80") +
+  scale_fill_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-1.5, 1.5),
+                       breaks = c(-1.5, 0, 1.5), labels = c("< -1.5", "0", "> 1.5")) +
+  labs(fill = "mean.z") +
+  theme_classic() +
+  theme(
+    text = element_text(size = 14),
+    axis.text = element_text(color = "black"),
+    axis.text.x = element_text(color = "black"),
+    strip.text = element_blank(),
+    legend.position = "top",
+    panel.spacing = unit(0.5, "lines") 
+  )
+
+module_heatmap2
+
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/module_heatmap.svg", height = 4.8, width = 10, bg = "white")
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/module_heatmap.png", height = 4.8, width = 10, bg = "white")
+```
+
+When the rows and columns are re-ordered, you can trace the signal down the diagonal from upper left to lower right. 
+
+```{r}
+leaf_cell_type_assignment <- data.frame(
+  cluster = c(0:22)
+) %>% 
+  mutate(cell_type = case_when(
+    cluster == 0 | 
+      cluster == 2 | 
+      cluster == 4 |
+      cluster == 6 | 
+      cluster == 12 ~ "Mesophyll",
+    cluster == 1 | 
+      cluster == 8 |
+      cluster == 10 | 
+      cluster == 16 ~ "Epidermis",
+      cluster == 3 |
+      cluster == 5 |
+      cluster == 15  |
+      cluster == 17 |
+      cluster == 21  ~ "Vasculature",
+    cluster == 9 |
+      cluster == 11 ~ "Proliferating",
+    cluster == 19 ~ "IPAP",
+      cluster == 13 ~ "Guard cells",
+    T ~ "Unassigned"
+  )) %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermis", "Guard cells",
+                              "Vasculature",
+                              "Proliferating", "IPAP", "Unassigned"
+                            ))) %>% 
+  mutate(cluster = factor(cluster, levels = c(
+     "0", "2", "4", "6", "12", #M
+    "1","8", "10", "16", #Epi
+    "3", "5", "15", "17", "21", #vasculature
+   "9", "11", #prolif
+    "13", #Guard cells
+   "19", ##IPAP
+    "7", "14", "18", "20" #Unknown
+  )))
+
+Leaf_cell_type_strip <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "" )) +
+  geom_tile(aes(fill = cell_type)) +
+  scale_fill_manual(values = c(brewer.pal(7, "Accent"), "grey80")) +
+  guides(fill = guide_legend(nrow = 2)) +
+  labs(fill = "Cell type") +
+  theme_void() +
+  theme(
+    legend.position = "bottom" ,
+    text = element_text(size = 14)
+  )
+
+Leaf_cell_type_strip
+graph <- wrap_plots(module_heatmap2, Leaf_cell_type_strip,
+                    nrow = 2, heights = c(1, 0.03))
+graph
+
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/module_heatmap_celltype.svg", height = 5.3, width = 10, bg = "white")
+ggsave("/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/module_heatmap_celltype.png", height = 5.3, width = 10, bg = "white")
+```
+#Make node table for candidate genes
+```{r}
+edge_table_filtered2 <- edge_table_select %>%
+  filter(from %in% pathway_genes$gene_ID) %>%
+  left_join(pathway_genes, by = c("from" = "gene_ID")) %>%
+  select("from", "tag", "to", "r", "t", "p.value", "FDR") %>%
+  mutate(
+    stats = paste0(
+      "r = ", round(r, 3),
+      "; t = ", signif(t, 3),
+      "; p = ", signif(p.value, 3),
+      "; FDR = ", signif(FDR, 3))) %>%
+  pivot_wider(names_from = tag,
+              values_from = stats)%>%
+  select(!c("from", "r", "t", "p.value", "FDR")) %>%
+  rename("gene_ID" = "to")
+
+edge_table_filtered3 <- edge_table_select %>%
+  filter(to %in% pathway_genes$gene_ID) %>%
+  left_join(pathway_genes, by = c("to" = "gene_ID")) %>%
+  select("from", "tag", "to", "r", "t", "p.value", "FDR") %>%
+  mutate(
+    stats = paste0(
+      "r = ", round(r, 3),
+      "; t = ", signif(t, 3),
+      "; p = ", signif(p.value, 3),
+      "; FDR = ", signif(FDR, 3))) %>%
+  pivot_wider(names_from = tag,
+              values_from = stats) %>%
+  select(!c("to", "r", "t", "p.value", "FDR"))%>%
+  rename("gene_ID" = "from")
+
+edge_table_merged <- bind_rows(edge_table_filtered2, edge_table_filtered3) %>%
+  group_by(gene_ID) %>%
+  summarise(across(everything(), ~ paste(unique(na.omit(.x)), collapse = " | ")), .groups = "drop")
+
+  
+
+mod_8_genes <- my_network_modules %>%
+  filter(module == 8) %>%
+  right_join(edge_table_merged, by = "gene_ID") %>%
+  left_join(repr_anno, by = "gene_ID") %>% 
+  select(c(gene, functional_annotation, !gene_ID))
+write_excel_csv(mod_8_genes, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/mod_8_genes_28July25.csv", col_names = T)
+```
+
+

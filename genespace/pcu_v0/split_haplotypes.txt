@@ -1,0 +1,45 @@
+GFF:
+awk '$1 ~ /_1$/' input.gff > filtered.gff
+awk '$1 ~ /_2$/' input.gff > filtered.gff
+pep.fa
+awk '/^>/ {keep = ($0 ~ /_1$/)} keep' input.fasta > haplotype1.fasta
+awk '/^>/ {keep = ($0 ~ /_2$/)} keep' input.fasta > haplotype2.fasta
+
+
+#split annotation files and bed files by haplotype
+IN='/scratch/ac05869/nih'
+OUT='/scratch/ac05869/gs_plcu_plal_cro/genomeRepo'
+WD='/scratch/ac05869/gs_plcu_plal_cro/wd'
+
+#gff by haplotype
+# awk '$1 ~ /_1$/' $IN/Plal_v1/plal_v1.working_models.repr.gff3 > $OUT/plal_v1_h1/plal_v1_h1.gff
+# awk '$1 ~ /_2$/' $IN/Plal_v1/plal_v1.working_models.repr.gff3 > $OUT/plal_v1_h2/plal_v1_h2.gff
+# 
+# awk '$1 ~ /a$/' $IN/Plcu_v2/plcu_v2.working_models.repr.gff3 > $OUT/plcu_v2_h1/plcu_v2_h1.gff
+# awk '$1 ~ /b$/' $IN/Plcu_v2/plcu_v2.working_models.repr.gff3 > $OUT/plcu_v2_h2/plcu_v2_h2.gff
+# 
+# #pep by haplotype
+# cd $OUT/plal_v1_h1/
+# awk -F'\t' '{ 
+#   match($9, /ID=([^;]+)/, arr); 
+#   if (arr[1] != "") print arr[1] 
+# }' plal_v1_h1.gff > hap1_ids.txt
+# awk 'FNR==NR {keep[$1]; next} /^>/ {split($1, h, ">"); id = h[2]; keep_line = (id in keep)} keep_line' hap1_ids.txt $IN/Plal_v1/plal_v1.working_models.repr.pep.fa > $OUT/plal_v1_h1/plal_v1_h1.fasta
+# 
+# cd $OUT/plal_v1_h2/
+# awk -F'\t' '{ 
+#   match($9, /ID=([^;]+)/, arr); 
+#   if (arr[1] != "") print arr[1] 
+# }' plal_v1_h2.gff > hap2_ids.txt
+# awk 'FNR==NR {keep[$1]; next} /^>/ {split($1, h, ">"); id = h[2]; keep_line = (id in keep)} keep_line' hap2_ids.txt $IN/Plal_v1/plal_v1.working_models.repr.pep.fa > $OUT/plal_v1_h2/plal_v1_h2.fasta
+# 
+# 
+# #awk '/^>/ {keep = ($0 ~ /_1$/)} keep' $IN/Plal_v1/plal_v1.working_models.repr.pep.fa > $OUT/plal_v1_h1/plal_v1_h1.fasta
+# #awk '/^>/ {keep = ($0 ~ /_2$/)} keep' $IN/Plal_v1/plal_v1.working_models.repr.pep.fa > $OUT/plal_v1_h2/plal_v1_h2.fasta
+# 
+# awk '/^>/ {keep = ($0 ~ /^>Plcu\.v2\.[0-9]+a/)} keep' $IN/Plcu_v2/plcu_v2.working_models.repr.pep.fa > $OUT/plcu_v2_h1/plcu_v2_h1.fasta
+# awk '/^>/ {keep = ($0 ~ /^>Plcu\.v2\.[0-9]+b/)} keep' $IN/Plcu_v2/plcu_v2.working_models.repr.pep.fa > $OUT/plcu_v2_h2/plcu_v2_h2.fasta
+# 
+# #C.roseus is primary assembly and already formatted
+# cp /scratch/ac05869/kratom_sc_gs/wd/bed/cro_v3.bed $WD/bed/cro_v3.bed
+# cp /scratch/ac05869/kratom_sc_gs/wd/peptide/cro_v3.fa $WD/peptide/cro_v3.fa

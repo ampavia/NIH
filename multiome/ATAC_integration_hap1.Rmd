@@ -1,0 +1,520 @@
+---
+title: "ATAC_integration"
+author: "Anne Pavia"
+date: "4-June-2025"
+output:  
+  html_notebook:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+  html_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '/scratch/ac05869/10X_Multiome/KRT_leaf/ATAC_analysis/wd')
+setwd('/scratch/ac05869/10X_Multiome/KRT_leaf/ATAC_analysis/wd')
+```
+# Packages 
+```{r}
+library(tidyverse)
+library(Seurat) 
+library(Signac)
+library(GenomicRanges)
+library(glmGamPoi)
+library(readxl)
+
+library(RColorBrewer)
+library(viridis)
+library(rcartocolor)
+
+library(patchwork)
+library(showtext)
+```
+
+# Data 
+## Load a common set of peaks
+Use merged peaks: 
+
+On GARCR, do:
+Combine the atac_peaks.bed file from replicates. 
+Sort them. 
+Remove duplicates (if any).
+Then use bedtools merge to make a single bed file. 
+
+```{r}
+arc_peaks <- read_delim("../bedtools/atac_peaks.sorted.merged.bed",
+                          delim = "\t", col_names = F, col_types = cols())
+
+arc_peaks$X4 <- "name"
+head(arc_peaks)
+```
+### Produce GRange from bed
+```{r}
+arc_peaks_granges <- lapply(split(arc_peaks, arc_peaks$X4), function(i){
+  GRanges(seqnames = i$X1,
+          ranges = IRanges(
+            start = i$X2,
+            end = i$X3
+          ))
+})
+
+arc_peaks_granges
+```
+```{r}
+gr <- arc_peaks_granges$name
+#arc_peaks_nice <- keepStandardChromosomes(arc_peaks_granges$name, pruning.mode = "coarse")
+#arc_peaks_nice
+```
+
+## Rep 1: KRT_AC_AE (KRT1)
+```{r}
+KRT1_metadata <- read.csv(
+  "../AC_cellranger_out/per_barcode_metrics.csv",
+  header = T,
+  row.names = 1
+)
+
+KRT1_metadata
+```
+
+```{r}
+KRT1_frag_path <- "../AC_cellranger_out/atac_fragments.tsv.gz"
+KRT1_frag_counts <- CountFragments(fragments = KRT1_frag_path)
+KRT1_cells <- KRT1_frag_counts$CB
+KRT1_fragment_object <- CreateFragmentObject(path = KRT1_frag_path, cells = KRT1_frag_counts$CB)
+```
+
+
+```{r}
+KRT1_ATAC_matrix <- FeatureMatrix(
+  fragments = KRT1_fragment_object,
+  features = gr,
+  cells = KRT1_frag_counts$CB
+)
+
+KRT1_ATAC_assay <- CreateChromatinAssay(
+  counts = KRT1_ATAC_matrix,
+  min.features = 1000,
+  fragments = KRT1_fragment_object
+) 
+
+KRT1_ATAC_object <- CreateSeuratObject(
+  counts = KRT1_ATAC_assay, 
+  assay = "peaks",
+  meta.data = KRT1_metadata, 
+  min.cells = 0,
+  min.features = 0)
+```
+```{r}
+showtext_auto(enable = T)
+KRT1_metadata %>% 
+  mutate(FRiP = atac_peak_region_fragments/atac_fragments * 100) %>% 
+  mutate(FRiT = atac_TSS_fragments/atac_fragments * 100) %>% 
+  ggplot(aes(x = atac_fragments, y = FRiP)) +
+  geom_point() +
+  scale_x_log10() +
+  #scale_y_log10() +
+  theme_classic()
+
+KRT1_metadata %>% 
+  mutate(FRiP = atac_peak_region_fragments/atac_fragments * 100) %>% 
+  mutate(FRiT = atac_TSS_fragments/atac_fragments * 100) %>% 
+  ggplot(aes(x = atac_fragments, y = FRiT)) +
+  geom_point() +
+  scale_x_log10() +
+  #scale_y_log10() +
+  theme_classic()
+showtext_auto(enable = F)
+```
+
+## Rep2: KRT_AD_AF (KRT2)
+```{r}
+KRT2_frag_path <- "../AD_cellranger_out/atac_fragments.tsv.gz"
+KRT2_frag_counts <- CountFragments(fragments = KRT2_frag_path)
+
+KRT2_metadata <- read.csv(
+  "../AD_cellranger_out/per_barcode_metrics.csv",
+  header = T,
+  row.names = 1
+)
+
+KRT2_cells <- KRT2_frag_counts$CB
+KRT2_fragment_object <- CreateFragmentObject(path = KRT2_frag_path, cells = KRT2_cells)
+```
+
+```{r}
+KRT2_ATAC_matrix <- FeatureMatrix(
+  fragments = KRT2_fragment_object,
+  features = gr,   
+  cells = KRT2_cells
+)
+
+KRT2_ATAC_assay <- CreateChromatinAssay(
+  counts = KRT2_ATAC_matrix,
+  min.features = 1000,
+  fragments = KRT2_fragment_object
+) 
+
+KRT2_ATAC_object <- CreateSeuratObject(
+  counts = KRT2_ATAC_assay, 
+  assay = "peaks",
+  meta.data = KRT2_metadata,
+  min.cells = 0,
+  min.features = 0)
+```
+
+```{r}
+showtext_auto(enable = T)
+KRT2_metadata %>% 
+  mutate(FRiP = atac_peak_region_fragments/atac_fragments * 100) %>% 
+  mutate(FRiT = atac_TSS_fragments/atac_fragments * 100) %>% 
+  ggplot(aes(x = atac_fragments, y = FRiP)) +
+  geom_point() +
+  scale_x_log10() +
+  #scale_y_log10() +
+  theme_classic()
+
+KRT2_metadata %>% 
+  mutate(FRiP = atac_peak_region_fragments/atac_fragments * 100) %>% 
+  mutate(FRiT = atac_TSS_fragments/atac_fragments * 100) %>% 
+  ggplot(aes(x = atac_fragments, y = FRiT)) +
+  geom_point() +
+  scale_x_log10() +
+  #scale_y_log10() +
+  theme_classic()
+showtext_auto(enable = F)
+
+```
+
+
+# Filter nuclei 
+## Nucleosome signal 
+```{r}
+KRT1_ATAC_object <- NucleosomeSignal(KRT1_ATAC_object)
+KRT2_ATAC_object <- NucleosomeSignal(KRT2_ATAC_object)
+```
+
+## Reads in peaks 
+```{r}
+KRT1_ATAC_object$read_in_peaks <- KRT1_ATAC_object$atac_peak_region_fragments / KRT1_ATAC_object$atac_fragments * 100
+
+KRT2_ATAC_object$read_in_peaks <- KRT2_ATAC_object$atac_peak_region_fragments / KRT2_ATAC_object$atac_fragments * 100
+```
+
+## TSS fractions
+```{r}
+KRT1_ATAC_object$TSS <- KRT1_ATAC_object$atac_TSS_fragments / KRT1_ATAC_object$atac_fragments * 100
+
+KRT2_ATAC_object$TSS <- KRT2_ATAC_object$atac_TSS_fragments / KRT2_ATAC_object$atac_fragments * 100
+```
+
+ 
+## Filter per sample 
+### KRT1
+```{r}
+KRT1_ATAC_object@meta.data %>% head()
+```
+
+```{r}
+KRT1_ATAC_object@meta.data %>% 
+  ggplot(aes(y = nFeature_peaks, x = atac_fragments)) +
+  geom_point() +
+  geom_hline(yintercept = 1000, color = "red2") +
+  geom_vline(xintercept = 2000, color = "red2") +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic()
+```
+
+```{r}
+KRT2_ATAC_object@meta.data %>% 
+  ggplot(aes(y = nFeature_peaks, x = atac_fragments)) +
+  geom_point() +
+  geom_hline(yintercept = 1000, color = "red2") +
+  geom_vline(xintercept = 2000, color = "red2") +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic()
+```
+
+
+
+```{r}
+KRT1_ATAC_object <- subset(
+  x = KRT1_ATAC_object,
+  subset = nCount_peaks > 1000 & 
+    read_in_peaks > 25 &
+    atac_fragments > 2000
+    
+)
+
+KRT1_ATAC_object
+```
+90651 features across 5517
+### KRT2
+```{r}
+KRT2_ATAC_object <- subset(
+  x = KRT2_ATAC_object,
+  subset = nCount_peaks > 1000 & 
+    read_in_peaks > 25 &
+    atac_fragments > 2000
+    
+)
+
+KRT2_ATAC_object
+```
+90651 features across 4338 samples
+
+# Pre-integration processing
+```{r}
+KRT1_ATAC_object <- FindTopFeatures(KRT1_ATAC_object, min.cutoff = 10)
+KRT2_ATAC_object <- FindTopFeatures(KRT2_ATAC_object, min.cutoff = 10)
+```
+
+```{r}
+KRT1_ATAC_object <- RunTFIDF(KRT1_ATAC_object, verbose = F)
+KRT2_ATAC_object <- RunTFIDF(KRT2_ATAC_object, verbose = F)
+```
+
+```{r}
+KRT1_ATAC_object <- RunSVD(KRT1_ATAC_object, verbose = F, approx = F)
+KRT2_ATAC_object <- RunSVD(KRT2_ATAC_object, verbose = F, approx = F)
+```
+
+# Merge first 
+```{r}
+KRT1_ATAC_object$run <- "KRT1"
+KRT2_ATAC_object$run <- "KRT2"
+
+KRT_ATAC_combined <- merge(KRT1_ATAC_object,
+                           list(KRT2_ATAC_object), 
+                           #add.cell.ids = c("KRT1", "KRT2")
+                           )
+
+KRT_ATAC_combined <- FindTopFeatures(KRT_ATAC_combined, min.cutoff = 10)
+KRT_ATAC_combined <- RunTFIDF(KRT_ATAC_combined, verbose = F)
+KRT_ATAC_combined <- RunSVD(KRT_ATAC_combined, verbose = F)
+
+KRT_ATAC_combined <- RunUMAP(KRT_ATAC_combined, reduction = "lsi", dims = 1:30)
+```
+
+ 
+
+# Integration 
+```{r}
+ATAC_integration_anchors <- FindIntegrationAnchors(
+  object.list = list(KRT1_ATAC_object, KRT2_ATAC_object),
+  anchor.features = rownames(KRT1_ATAC_object1),
+  reduction = "rlsi",
+  dims = 2:30
+)
+
+KRT_ATAC <- IntegrateEmbeddings(
+  anchorset = ATAC_integration_anchors, 
+  reductions = KRT_ATAC_combined[["lsi"]],
+  new.reduction.name = "integrated_lsi",
+  dims.to.integrate = 1:30
+)
+
+KRT_ATAC <- RunUMAP(KRT_ATAC, reduction = "integrated_lsi", dims = 2:30)
+
+Integrated <- DimPlot(KRT_ATAC, group.by = "run") +
+  ggtitle("Integrated")
+
+Integrated
+```
+
+```{r}
+DimPlot(KRT_ATAC, group.by = "run", split.by = "run") 
+
+ggsave("../R_output/ATAC_UMAP_by_run.svg", height = 3, width = 6, bg = "white")
+ggsave("../R_output/ATAC_UMAP_by_run.png", height = 3, width = 6, bg = "white")
+```
+
+# Clustering 
+```{r}
+KRT_ATAC <- RunTFIDF(KRT_ATAC, verbose = F)
+KRT_ATAC <- FindTopFeatures(KRT_ATAC, min.cutoff = 'q5')
+KRT_ATAC <- RunSVD(KRT_ATAC, verbose = F)
+KRT_ATAC <- RunUMAP(KRT_ATAC, reduction = "integrated_lsi", dims = 2:30, 
+                    min.dist = 0.001, repulsion.strength = 1, n.neighbors = 30, spread = 1,
+                    reduction.name = "umap.atac", reduction.key = "atacUMAP_")
+
+DimPlot(KRT_ATAC, group.by = "run", reduction = "umap.atac") 
+```
+
+```{r}
+KRT_ATAC <- FindNeighbors(KRT_ATAC, reduction = "lsi", dims = 1:30)
+KRT_ATAC <- FindClusters(KRT_ATAC, verbose = F, algorithm = 2)
+DimPlot(KRT_ATAC, label = T, reduction = "umap.atac") + NoLegend()
+```
+```{r}
+DefaultAssay(KRT_ATAC) <- "peaks"
+saveRDS(KRT_ATAC, "../R_output/KRT_ATAC.Rds")
+KRT_ATAC <- readRDS("../R_output/KRT_ATAC.Rds")
+```
+
+# Integrate with RNA 
+## Pull RNA object 
+```{r}
+KRT_RNA <- readRDS("../../seurat_out/Integrated_RNA_Data/KRT_RNA_multiome_only_5june25.rds") 
+DefaultAssay(KRT_RNA) <- "RNA"
+```
+
+```{r}
+KRT_RNA
+KRT_ATAC
+```
+RNA object: 72704 features across 12082 samples
+ATAC object: 90651 features across 9855 samples
+## Subset shared barcodes 
+```{r}
+shared_cells <- intersect(
+  colnames(KRT_RNA),
+  str_remove(colnames(KRT_ATAC), "-1")
+)
+
+KRT_RNA@meta.data$barcode <- row.names(KRT_RNA@meta.data)
+KRT_ATAC@meta.data$barcode <- row.names(KRT_ATAC@meta.data)
+
+KRT_RNA$cell <- colnames(KRT_RNA)
+KRT_ATAC$cell<- str_remove(colnames(KRT_ATAC), "-1")
+
+
+KRT_RNA_subset <- subset(
+  x = KRT_RNA,
+  subset = cell %in% shared_cells 
+)
+
+KRT_ATAC_subset <- subset(
+  x = KRT_ATAC,
+  subset = cell %in% shared_cells 
+)
+
+
+#colnames(KRT_RNA_subset)
+dim(KRT_ATAC_subset)
+dim(KRT_RNA_subset)
+
+# row.names(KRT_ATAC@meta.data) <- str_remove(colnames(KRT_ATAC), "-1")
+KRT_ATAC_subset_renamed <- RenameCells(KRT_ATAC_subset, 
+            new.names = str_remove(colnames(KRT_ATAC_subset), "-1"))
+```
+
+## Append objects 
+```{r}
+KRT_multiome <- KRT_RNA_subset
+DefaultAssay(KRT_multiome) <- "RNA"
+KRT_multiome[["peaks"]] <- KRT_ATAC_subset_renamed[["peaks"]]
+
+KRT_multiome
+```
+
+## Joint Visualization 
+```{r}
+DefaultAssay(KRT_multiome) <- "RNA"
+
+KRT_multiome <- SCTransform(KRT_multiome, verbose = FALSE) %>% 
+  RunPCA() %>% 
+  RunUMAP(dims = 1:30, reduction.name = 'umap.rna', reduction.key = 'rnaUMAP_',
+          min.dist = 0.001, repulsion.strength = 1, n.neighbors = 30, spread = 1)
+
+DefaultAssay(KRT_multiome) <- "peaks" 
+KRT_multiome <- RunTFIDF(KRT_multiome)
+
+KRT_multiome <- FindTopFeatures(KRT_multiome, min.cutoff = "q5")
+KRT_multiome <- RunSVD(KRT_multiome)
+KRT_multiome <- RunUMAP(KRT_multiome, reduction = "lsi", 
+                        dims = 2:30, reduction.name = "umap.atac", reduction.key = "atacUMAP_",
+                        min.dist = 0.001, repulsion.strength = 1, n.neighbors = 30, spread = 1)
+
+KRT_multiome <- FindMultiModalNeighbors(
+  KRT_multiome, reduction.list = list("pca", "lsi"), 
+  dims.list = list(1:30, 2:30), verbose = F
+)
+
+KRT_multiome <- RunUMAP(KRT_multiome, 
+                        nn.name = "weighted.nn", reduction.name = "wnn.umap",
+                        reduction.key = "wnnUMAP_",
+                        min.dist = 0.001, repulsion.strength = 1, n.neighbors = 30, spread = 1,
+                        verbose = F)
+
+```
+
+```{r}
+saveRDS(KRT_multiome, "../R_output/KRT_multiome_pre-cluster_metadata.Rds")
+```
+##### Left off here until annotation of clusters is completed.
+```{r}
+KRT_multiome@meta.data <- KRT_multiome@meta.data %>% 
+  mutate(cell_type = case_when(
+    seurat_clusters == 0 | 
+      seurat_clusters == 1 | 
+      seurat_clusters == 3 | 
+      seurat_clusters ==7  ~ "Mesophyll",
+    seurat_clusters == 2 | 
+      seurat_clusters == 5 ~ "Epidermis",
+    seurat_clusters == 12 ~ "Guard cells",
+    seurat_clusters == 11 |
+      seurat_clusters == 6 |
+      seurat_clusters == 10 |
+      seurat_clusters == 14 |
+      seurat_clusters == 15  ~ "Vasculature",
+    seurat_clusters == 13 ~ "IPAP",
+      seurat_clusters == 8 ~ "Idioblast",
+    T ~ "Unassigned"
+  )) %>% 
+  mutate(cell_type = factor(cell_type,
+                      levels = c("Mesophyll", 
+                                            "Epidermis", "Guard cells",
+                                             "Vasculature", 
+                                             "IPAP", "Idioblast", "Unassigned"
+                                            )))
+KRT_multiome@meta.data %>% 
+  group_by(seurat_clusters) %>% 
+  count()
+
+KRT_multiome@meta.data %>% 
+  group_by(cell_type) %>% 
+  count()
+```
+
+```{r}
+
+Multi_RNA_umap <- DimPlot(KRT_multiome, reduction = "umap.rna", 
+                          group.by = "cell_type") +
+  ggtitle("RNA")
+
+Multi_ATAC_umap <- DimPlot(KRT_multiome, reduction = "umap.atac", 
+                          group.by = "cell_type") +
+  ggtitle("ATAC")
+
+Multi_joint_umap <- DimPlot(KRT_multiome, reduction = "wnn.umap", 
+                          group.by = "cell_type") +
+  ggtitle("Joint")
+
+wrap_plots(
+ Multi_RNA_umap,
+ Multi_ATAC_umap,
+ Multi_joint_umap,
+ nrow = 1, guides = "collect"
+) &
+  scale_color_manual(values = c(brewer.pal(6, "Accent")[1:3],
+                                brewer.pal(6, "Set2")[6],
+                                brewer.pal(6, "Accent")[5:6],
+                                "grey80")) &
+  theme_void() &
+  theme(
+    legend.position = "bottom",
+    plot.margin = margin(r = 1, l = 1, unit = "lines"),
+    text = element_text(size = 14)
+  ) 
+  
+ggsave("../R_output/KRT_multiome_UMAP_bulk_peaks.svg", height = 3, width = 7, bg = "white")
+ggsave("../R_output/KRT_multiome_UMAP_bulk_peaks.png", height = 3, width = 7, bg = "white")
+```
+```{r}
+saveRDS(KRT_multiome, "../R_output/KRT_multiome.Rds")
+```
