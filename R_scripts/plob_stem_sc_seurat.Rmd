@@ -1,0 +1,1961 @@
+---
+title: "Plumeria stem single cell"
+author: "Anne Pavia"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(Seurat) 
+library(readxl)
+library(RColorBrewer)
+library(viridis)
+library(svglite) 
+library(patchwork)
+library(cowplot)
+library(ggpubr)
+library(showtext)
+```
+#Notes: 
+Started October 31 with Seurat v5
+## Stem 
+reps 1 and 2 with two flow cell runs each; protoplasts; PIPseq v5 kit, pipseeker-v3.3.0-linux; #EM algorithm #mapped on plob_v4 assembly
+>PLU_AZ: ~36,225 protoplast input, expect ~18,112 out
+>PLU_BA: ~36,225 protoplast input, expect ~18,112 out
+
+
+# Load Data for Stem
+
+```{r}
+#Note that you have to gzip these files, as Seurat expects them to be zipped to match CellRangers output (zipped in CellRanger output from v3 or higher). STARsolo did not gzip these by default
+
+PLU_AZ_raw <- Read10X(data.dir = "/scratch/ac05869/plob_sc/STARsolo/PLU_AZ_Solo.out/GeneFull/raw/data_for_R/EM_EmptyDrops_Combined")
+PLU_BA_raw <- Read10X(data.dir = "/scratch/ac05869/plob_sc/STARsolo/PLU_BA_Solo.out/GeneFull/raw/data_for_R/EM_EmptyDrops_Combined")
+
+```
+
+# Create Seurat Objects
+
+```{r}
+AZ <- CreateSeuratObject(counts = PLU_AZ_raw, min.cells = 3, min.features = 50,
+                         project = "PLU_AZ")
+BA <- CreateSeuratObject(counts = PLU_BA_raw, min.cells = 3, min.features = 50,
+                         project = "PLU_BA")
+```
+## Summary Statistics
+###Before any cleaning
+```{r}
+summary(AZ$nFeature_RNA)
+summary(AZ$nCount_RNA)
+
+summary(BA$nFeature_RNA)
+summary(BA$nCount_RNA)
+
+```
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    343     591     873    1235    1372   20406 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    495     688    1052    1673    1740   53555 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    200     698    1127    1852    2270   24434 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    580     842    1428    2903    3248   68475 
+
+
+# Data QC
+You may or may not be able to do organellar filtering based on what you aligned to - take notes of organellar filtering. How much % remove?
+## Organelles
+
+Data QC - Chloroplast and Mitochondrion Flags
+Add column with organellar percentage to filter data on 
+The [[ operator can add columns to object metadata. This is a great place to stash QC stats
+
+Plumera obtusa SPECIFIC EXAMPLE
+Any gene that doesn't start with ^Pluob is an organellar gene
+#Check the minimum and maximum percentage of organellar reads in a given cell
+```{r}
+##rep1
+AZ[["percent.normal"]] <- PercentageFeatureSet(AZ, pattern = "^Pluob")
+AZ[["percent.organellar"]] <- (100 - AZ[["percent.normal"]])
+
+min(AZ[["percent.normal"]]) #60.451
+max(AZ[["percent.normal"]]) #100
+
+min(AZ[["percent.organellar"]])#0
+max(AZ[["percent.organellar"]])#39.549
+
+##rep2
+
+BA[["percent.normal"]] <- PercentageFeatureSet(BA, pattern = "^Pluob")
+BA[["percent.organellar"]] <- (100 - BA[["percent.normal"]])
+
+min(BA[["percent.normal"]])#22.3458
+max(BA[["percent.normal"]])#100
+
+min(BA[["percent.organellar"]])#0
+max(BA[["percent.organellar"]])#77.6542
+```
+
+## Plotting QC Values
+```{r}
+VlnPlot(AZ, features = c("nFeature_RNA", "nCount_RNA", "percent.organellar"), ncol = 3, raster = FALSE)
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/AZ_violin_plots.png", height = 8, width = 8, bg = "white")
+
+#nCount = number of UMIs per cell
+#nFeature = number of Genes per cell
+
+VlnPlot(BA, features = c("nFeature_RNA", "nCount_RNA", "percent.organellar"), ncol = 3, raster = FALSE)
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/BA_violin_plots.png", height = 8, width = 8, bg = "white")
+
+#nCount = number of UMIs per cell
+#nFeature = number of Genes per cell
+```
+
+## Organellar Filtering
+```{r}
+#this is for Chloroplast and Mitochondria, I just name it "chloro_filt" 
+
+AZ #62016 features across 4044 samples within 1 assay 
+AZ_chloro_filt <- subset(AZ, subset = percent.organellar < 5) #remove all cells with above 5% organellar reads
+AZ_chloro_filt #62016 features across 3820 samples within 1 assay 
+
+BA #74849 features across 13491 samples within 1 assay 
+BA_chloro_filt <- subset(BA, subset = percent.organellar < 5) #remove all cells with above 5% organellar reads
+BA_chloro_filt #74849 features across 12588 samples within 1 assay 
+```
+
+## Organellar Filtering
+```{r}
+#Check the new distrubution of organellar read percentage now that the data is filtered and easier to see. May need to adjust filtering!
+
+VlnPlot(AZ_chloro_filt, features = c("percent.organellar"), raster = FALSE)
+
+#LIB_ID: 5% 
+# Starts: 10000  Ends: 9500  Removed: 500
+
+VlnPlot(BA_chloro_filt, features = c("percent.organellar"), raster = FALSE)
+
+#LIB_ID: 5% 
+# Starts: 10000  Ends: 9500  Removed: 500
+```
+
+## Plotting for Cutoff Selection
+```{r}
+#blank data frame/plot for helping to organize plots 
+#every single dataset is different. BLUE: UMIs. Make so that one read to one gene is the minimum. With a lot of cells we can be more stringent and throw out more. Get rid of "extremes". What is the mean UMIs per gene? This is a metric that people might pay more attention to in the future.
+
+blank <- data.frame(
+  x = 1:10000,
+  y = 1:10000
+) %>% 
+  ggplot(aes(x = x, y = y)) +
+  theme_void()
+```
+###Rep1
+```{r}
+#You should generate a plot with test values and adjust based on the dataset!
+#I plot the full dataset and the organellar filtered dataset to be able to visualize how the organellar filtering impacts the data
+
+AZ_scatter <- AZ@meta.data %>% 
+  ggplot(aes(x = nCount_RNA, y = nFeature_RNA)) +
+  geom_point() + ggtitle("PLU_AZ pipseq") +
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_hline(yintercept=500, color = "red") + #Set minimum number of genes to be expressed per cell
+  geom_hline(yintercept=10000, color = "red") + #Set maximum number of genes to be expressed per cell
+  geom_vline(xintercept=500, color = "blue") + #Set minimum number of UMI's per cell
+  geom_vline(xintercept=50000, color = "blue") #Set maximum number of UMI's per cell
+
+#Below two plots should match the above values and colors
+AZ_count_hist <- AZ@meta.data %>% 
+  ggplot(aes(x = nCount_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "blue") + 
+  geom_vline(xintercept = 50000, color = "blue") +
+  scale_x_log10()
+
+AZ_feature_hist <- AZ@meta.data %>% 
+  ggplot(aes(x = nFeature_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "red") +
+  geom_vline(xintercept = 10000, color = "red") +
+  scale_x_log10() +
+  coord_flip()
+
+wrap_plots(
+  AZ_count_hist, blank,
+  AZ_scatter, AZ_feature_hist,
+  nrow = 2, ncol = 2, 
+  widths = c(1, 0.2), 
+  heights = c(0.2, 1)
+)
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/AZ_cutoffs.png", height = 8, width = 8, bg = "white")
+
+#Same as above but use the organellar filtered dataset so I can do a comparison
+
+AZ_scatter <- AZ_chloro_filt@meta.data %>% 
+  ggplot(aes(x = nCount_RNA, y = nFeature_RNA)) +
+  geom_point() + ggtitle("PLU_AZ pipseq - Organelle Filtering First") +
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_hline(yintercept=500, color = "red") +
+  geom_hline(yintercept=10000, color = "red") +
+  geom_vline(xintercept=500, color = "blue") +
+  geom_vline(xintercept=50000, color = "blue")
+
+AZ_count_hist <- AZ_chloro_filt@meta.data %>% 
+  ggplot(aes(x = nCount_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "blue") +
+  geom_vline(xintercept = 50000, color = "blue") +
+  scale_x_log10()
+
+AZ_feature_hist <- AZ_chloro_filt@meta.data %>% 
+  ggplot(aes(x = nFeature_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "red") +
+  geom_vline(xintercept = 10000, color = "red") +
+  scale_x_log10() +
+  coord_flip()
+
+wrap_plots(
+  AZ_count_hist, blank,
+  AZ_scatter, AZ_feature_hist,
+  nrow = 2, ncol = 2, 
+  widths = c(1, 0.2), 
+  heights = c(0.2, 1)
+)
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/AZ_chloro_filt_cutoffs.png", height = 8, width = 8, bg = "white")
+```
+
+###rep 2
+```{r}
+#You should generate a plot with test values and adjust based on the dataset!
+#I plot the full dataset and the organellar filtered dataset to be able to visualize how the organellar filtering impacts the data
+
+BA_scatter <- BA@meta.data %>% 
+  ggplot(aes(x = nCount_RNA, y = nFeature_RNA)) +
+  geom_point() + ggtitle("PLU_BA pipseq") +
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_hline(yintercept=500, color = "red") + #Set minimum number of genes to be expressed per cell
+  geom_hline(yintercept=10000, color = "red") + #Set maximum number of genes to be expressed per cell
+  geom_vline(xintercept=500, color = "blue") + #Set minimum number of UMI's per cell
+  geom_vline(xintercept=50000, color = "blue") #Set maximum number of UMI's per cell
+
+#Below two plots should match the above values and colors
+BA_count_hist <- BA@meta.data %>% 
+  ggplot(aes(x = nCount_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "blue") + 
+  geom_vline(xintercept = 50000, color = "blue") +
+  scale_x_log10()
+
+BA_feature_hist <- BA@meta.data %>% 
+  ggplot(aes(x = nFeature_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "red") +
+  geom_vline(xintercept = 10000, color = "red") +
+  scale_x_log10() +
+  coord_flip()
+
+wrap_plots(
+  BA_count_hist, blank,
+  BA_scatter, BA_feature_hist,
+  nrow = 2, ncol = 2, 
+  widths = c(1, 0.2), 
+  heights = c(0.2, 1)
+)
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/BA_cutoffs.png", height = 8, width = 8, bg = "white")
+
+#Same as above but use the organellar filtered dataset so I can do a comparison
+
+BA_scatter <- BA_chloro_filt@meta.data %>% 
+  ggplot(aes(x = nCount_RNA, y = nFeature_RNA)) +
+  geom_point() + ggtitle("PLU_BA pipseq - Organelle Filtering First") +
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_hline(yintercept=500, color = "red") +
+  geom_hline(yintercept=10000, color = "red") +
+  geom_vline(xintercept=500, color = "blue") +
+  geom_vline(xintercept=50000, color = "blue")
+
+BA_count_hist <- BA_chloro_filt@meta.data %>% 
+  ggplot(aes(x = nCount_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "blue") +
+  geom_vline(xintercept = 50000, color = "blue") +
+  scale_x_log10()
+
+BA_feature_hist <- BA_chloro_filt@meta.data %>% 
+  ggplot(aes(x = nFeature_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "red") +
+  geom_vline(xintercept = 10000, color = "red") +
+  scale_x_log10() +
+  coord_flip()
+
+wrap_plots(
+  BA_count_hist, blank,
+  BA_scatter, BA_feature_hist,
+  nrow = 2, ncol = 2, 
+  widths = c(1, 0.2), 
+  heights = c(0.2, 1)
+)
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/BA_chloro_filt_cutoffs.png", height = 8, width = 8, bg = "white")
+```
+
+
+# Data Set Filtering
+```{r}
+#Based on above plots filter dataset appropriately 
+
+AZ#62016 features across 4044 samples within 1 assay 
+AZ <- subset(AZ, subset = nFeature_RNA > 500 & nFeature_RNA < 10000 & nCount_RNA > 500 & nCount_RNA < 50000 & percent.organellar < 5)
+AZ#62016 features across 3350 samples within 1 assay 
+
+##Remove genes that have organellar ID's
+countsAZ <- GetAssayData(AZ, assay = "RNA")
+keepAZ <- grepl("^Pluob\\.v4", rownames(countsAZ))
+counts_filteredAZ <- countsAZ[keepAZ, ]
+head(counts_filteredAZ)
+AZ<- subset(AZ, features = rownames(counts_filteredAZ))
+AZ
+#After Filtering
+#3350 cells
+#Genes: 61975
+#41 genes filtered out
+
+BA #74849 features across 13491 samples within 1 assay 
+BA <- subset(BA, subset = nFeature_RNA > 500 & nFeature_RNA < 10000 & nCount_RNA > 500 & nCount_RNA < 50000 & percent.organellar < 5)
+BA #74849 features across 12296 samples within 1 assay 
+
+##Remove genes that have organellar ID's
+countsBA <- GetAssayData(BA, assay = "RNA")
+keepBA <- grepl("^Pluob\\.v4", rownames(countsBA))
+counts_filteredBA <- countsBA[keepBA, ]
+head(counts_filteredBA)
+BA<- subset(BA, features = rownames(counts_filteredBA))
+BA
+#After Filtering
+#12296 cells
+#Genes: 74810
+#39 genes filtered out
+```
+
+
+
+## Summary Statistics
+###rep1
+```{r}
+summary(AZ$nFeature_RNA)
+summary(AZ$nCount_RNA)
+
+summary(BA$nFeature_RNA)
+summary(BA$nCount_RNA)
+
+```
+ Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    501     677     969    1309    1489    9689 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    527     791    1202    1740    1880   28275 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    501     716    1188    1840    2339    9979 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    580     862    1502    2808    3374   28610 
+
+# Data Processing - QC First Look
+>Notes
+
+We want to process the data as a quick QC to check clustering
+This preprocessing is also required to do Doublet Filtering 
+
+## Normalize the Data
+
+```{r}
+#Default = LogNormalize
+BA <- NormalizeData(BA)
+AZ <- NormalizeData(AZ)
+```
+
+## Clustering
+
+```{r}
+#Select Highly Variable Features
+BA <- FindVariableFeatures(BA, selection.method = "vst", nfeatures = 3000)
+AZ <- FindVariableFeatures(AZ, selection.method = "vst", nfeatures = 3000)
+```
+
+## Scale the Data
+
+```{r}
+BA.genes <- rownames(BA)
+BA <- ScaleData(BA, features = BA.genes)
+
+AZ.genes <- rownames(AZ)
+AZ <- ScaleData(AZ, features = AZ.genes)
+```
+
+## PCA
+
+```{r}
+BA$Run <- BA@meta.data$orig.ident
+BA <- RunPCA(BA, npcs = 75, features = VariableFeatures(object = BA), verbose = FALSE) # run PCA (principal component analysis)
+
+AZ$Run <- AZ@meta.data$orig.ident
+AZ <- RunPCA(AZ, npcs = 75, features = VariableFeatures(object = AZ), verbose = FALSE) # run PCA
+```
+
+```{r}
+#Elbow plot helps us quickly estimate/check for how many PC's to use for clustering
+ElbowPlot(BA, ndims = 75)
+
+ElbowPlot(AZ, ndims = 75)
+
+```
+
+## Call Clusters
+
+```{r}
+#Adjust dimensions based on PC's in elbow plot; I chose 50 because it is where they level off at low standard deviation
+#Adjust resolution based on clustering. Optimal resolution typically increases for datasets with more cells because you are more likely to capture more types of cells
+##Usually need to look at the UMAP and decide if cluster numbers/splitting looks good or not. Stem will usually have more clusters than leaf
+BA <- FindNeighbors(BA, dims = 1:50)
+BA <- FindClusters(BA, resolution = 0.5) #resolution can be adjusted depending on how the cells cluster. Higher resolution will break the umap into more clusters
+BA <- RunUMAP(BA, dims = 1:50)
+
+AZ <- FindNeighbors(AZ, dims = 1:50)
+AZ <- FindClusters(AZ, resolution = 0.5)
+AZ <- RunUMAP(AZ, dims = 1:50)
+```
+
+## Make UMAP Plots
+
+```{r}
+UMAP1 <- DimPlot(BA, reduction = "umap", label = T, label.size = 5, repel = T, split.by = "Run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  ) +
+  ggtitle("Grouped by Replicates\n")
+UMAP1
+
+
+UMAP2 <- DimPlot(AZ, reduction = "umap", label = T, label.size = 5, repel = T, split.by = "Run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  ) +
+  ggtitle("Grouped by Replicates\n")
+UMAP2
+#I usally dont save this UMAP since I'm usually integrating later anyway. They look like they clustered well, so I don't need to adjust the resolution from 0.5
+```
+
+## General Stats
+
+```{r}
+#Cells in each cluster: take note
+table(Idents(BA))
+# Cells in each replicate: take note
+table(BA$orig.ident)
+#How does cluster membership vary by replicate? #clusters
+table(Idents(BA), BA$orig.ident)
+
+#Cells in each cluster:
+table(Idents(AZ))
+# Cells in each replicate: 
+table(AZ$orig.ident)
+#How does cluster membership vary by replicate? 
+table(Idents(AZ), AZ$orig.ident)
+```
+
+## Save "dirty" RDS before doublet removal in case needed later
+
+```{r}
+saveRDS(BA, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_BA_predoublet.rds")
+
+saveRDS(AZ, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_AZ_predoublet.rds")
+
+#BA <-readRDS(file = "/scratch/ac05869/plob_sc/seurat_data/PLU_BA_predoublet.rds")
+#AZ <-readRDS(file = "/scratch/ac05869/plob_sc/seurat_data/PLU_AZ_predoublet.rds")
+```
+
+## Stat Check
+
+```{r}
+#Check various stats to determine if there is an outlier for any of the clusters
+#Are there any clusters which have more doublets than others?
+plot1 <- VlnPlot(BA, features = c("nFeature_RNA"), pt.size = 0.5) + ggtitle("PLU_BA - nFeature_RNA")
+plot2 <-VlnPlot(BA, features = c("nCount_RNA"), pt.size = 0.5) + ggtitle("PLU_BA - nCount_RNA")
+
+ggarrange(plot1, plot2, nrow = 2, ncol = 1, common.legend = TRUE, legend = "bottom")
+
+plot1
+plot2
+
+plot3 <- VlnPlot(AZ, features = c("nFeature_RNA"), pt.size = 0.5) + ggtitle("PLU_AZ - nFeature_RNA")
+plot4 <-VlnPlot(AZ, features = c("nCount_RNA"), pt.size = 0.5) + ggtitle("PLU_AZ - nCount_RNA")
+
+ggarrange(plot1, plot2, nrow = 2, ncol = 1, common.legend = TRUE, legend = "bottom")
+
+plot3
+plot4
+
+#Notes: BA and AZ; nFeature is number of genes/cell, nCount is number of UMIs/cell
+#BA: 20 clusters
+#AZ: 12 clusters
+```
+
+# Doublet Filtering
+## Run Doubletfinder
+```{r}
+library(DoubletFinder)
+#Code needs to be edited to work currently EVERY TIME in v4 but not v5
+#for V4, use "trace(paramSweep, edit = T)" and "trace(doubletFinder, edit = T)" - and edit $counts to @counts
+```
+
+
+#AZ doubles
+```{r}
+#Seurat Objects Pre-Processed, PCA and UMAP run 
+
+## pK Identification (no ground-truth) ---------------------------------------------------------------------------------------
+sweep.res.list_ai <- paramSweep(AZ, PCs = 1:50, sct = FALSE)
+sweep.stats_ai <- summarizeSweep(sweep.res.list_ai, GT = FALSE)
+bcmvn_ai <- find.pK(sweep.stats_ai)
+
+pK=as.numeric(as.character(bcmvn_ai$pK))
+BCmetric=bcmvn_ai$BCmetric
+pK_choose = pK[which(BCmetric %in% max(BCmetric))]
+
+## ggplot doesn't work
+showtext_auto(enable = TRUE)
+png(file = "/scratch/ac05869/plob_sc/seurat_qc/PLU_AZ_doubletfinder_pK_identification.png")
+par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
+plot(x = pK, y = BCmetric, pch = 16,type="b",
+col = "blue",lty=1)
+abline(v=pK_choose,lwd=2,col='red',lty=2)
+title("The BCmvn distributions")
+text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
+dev.off()
+showtext_auto(enable = F)
+
+
+## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
+homotypic.prop <- modelHomotypic(AZ@meta.data$seurat_clusters)           ## ex: annotations <- seu_kidney@meta.data$ClusteringResults
+nExp_poi <- round(0.07*nrow(AZ@meta.data))  ## Assuming 7% doublet formation rate - updated based on 40k cells loaded for PIPseq ##This is something that should be changed based on assumed doublet levels!
+nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+```
+
+## AZ doublet test
+```{r}
+## Run DoubletFinder with varying classification stringencies ----------------------------------------------------------------
+#Update pK to be pK choosen from Above steps!
+AZ_doublet_test <-doubletFinder(AZ, #change library ID
+                                PCs = 1:50, #Josh doesn't usually change this to match the number of PCs
+                                pN = 0.25, 
+                                pK = pK_choose, #the only number we change from earlier code (I use the variable itself)
+                                nExp = nExp_poi, #this variable is from previous code code chunk
+                                reuse.pANN = FALSE, sct = FALSE)
+
+AZ_doublet_test
+
+value_AZ <- paste0("DF.classifications_0.25_", pK_choose, "_", nExp_poi) #pK_choose is the variable or pK value chosen from above steps, the last value is the # doublets found
+value_AZ
+
+sum(str_count(AZ_doublet_test[[value_AZ]], "Doublet")) #How many are doublets? 235
+DimPlot(AZ_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = value_AZ)+theme(aspect.ratio = 1)
+#Save a UMAP of which cells were the doublets
+##Does this match your expectations from the Violin plots of the clusters we made earlier?
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_AZ_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
+```
+#BA doubles
+```{r}
+#Seurat Objects Pre-Processed, PCA and UMAP run 
+
+## pK Identification (no ground-truth) ---------------------------------------------------------------------------------------
+sweep.res.list_ai <- paramSweep(BA, PCs = 1:50, sct = FALSE)
+sweep.stats_ai <- summarizeSweep(sweep.res.list_ai, GT = FALSE)
+bcmvn_ai <- find.pK(sweep.stats_ai)
+
+pK=as.numeric(as.character(bcmvn_ai$pK))
+BCmetric=bcmvn_ai$BCmetric
+pK_choose = pK[which(BCmetric %in% max(BCmetric))]
+
+## ggplot doesn't work
+showtext_auto(enable = TRUE)
+png(file = "/scratch/ac05869/plob_sc/seurat_qc/PLU_BA_doubletfinder_pK_identification.png")
+par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
+plot(x = pK, y = BCmetric, pch = 16,type="b",
+col = "blue",lty=1)
+abline(v=pK_choose,lwd=2,col='red',lty=2)
+title("The BCmvn distributions")
+text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
+dev.off()
+showtext_auto(enable = F)
+
+
+## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
+homotypic.prop <- modelHomotypic(BA@meta.data$seurat_clusters)           ## ex: annotations <- seu_kidney@meta.data$ClusteringResults
+nExp_poi <- round(0.07*nrow(BA@meta.data))  ## Assuming 7% doublet formation rate - updated based on 40k cells loaded for PIPseq ##This is something that should be changed based on assumed doublet levels!
+nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+```
+
+## BA doublet test
+```{r}
+## Run DoubletFinder with varying classification stringencies ----------------------------------------------------------------
+#Update pK to be pK choosen from Above steps!
+BA_doublet_test <-doubletFinder(BA, #change library ID
+                                PCs = 1:50, #Josh doesn't usually change this to match the number of PCs
+                                pN = 0.25, 
+                                pK = pK_choose, #the only number we change from earlier code (I use the variable itself)
+                                nExp = nExp_poi, #this variable is from previous code code chunk
+                                reuse.pANN = FALSE, sct = FALSE)
+
+BA_doublet_test
+
+value_BA <- paste0("DF.classifications_0.25_", pK_choose, "_", nExp_poi) #pK_choose is the variable or pK value chosen from above steps, the last value is the # doublets found
+value_BA
+
+sum(str_count(BA_doublet_test[[value_BA]], "Doublet")) #How many are doublets? 235
+DimPlot(BA_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = value_BA)+theme(aspect.ratio = 1)
+#Save a UMAP of which cells were the doublets
+##Does this match your expectations from the Violin plots of the clusters we made earlier?
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_BA_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
+```
+## Save RDS Object from Doublet Finder
+
+```{r}
+saveRDS(BA_doublet_test, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_BA_doublet_finder_seurat.rds")
+
+saveRDS(AZ_doublet_test, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_AZ_doublet_finder_seurat.rds")
+
+#Notes:
+
+#BA_doublet_test <- ("/scratch/ac05869/plob_sc/seurat_data/PLU_BA_doublet_finder_seurat.rds")
+#AZ_doublet_test <- ("/scratch/ac05869/plob_sc/seurat_data/PLU_AZ_doublet_finder_seurat.rds")
+
+```
+
+## Filter Doublets
+```{r}
+#BA
+BA_clean <- subset(BA_doublet_test, subset = DF.classifications_0.25_0.29_861 == "Singlet") #BA "DF.classifications_0.25_0.29_861"
+BA_clean # 11435 cells
+
+#AZ
+AZ_clean <- subset(AZ_doublet_test, subset = DF.classifications_0.25_0.3_235 == "Singlet") #AZ "DF.classifications_0.25_0.3_235"
+AZ_clean # 3115 cells
+#take note of number of doublets that were filtered out. 
+```
+
+## Summary Statistics Cleaned Data: Number of Genes  
+```{r}
+summary(BA_clean$nFeature_RNA)
+summary(BA_clean$nCount_RNA)
+
+summary(AZ_clean$nFeature_RNA)
+summary(AZ_clean$nCount_RNA)
+```
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    477     692    1081    1491    2013    8489 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  556.0   827.5  1353.0  2101.0  2792.5 21210.0 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  483.0   656.5   914.0  1072.8  1321.5  3814.0 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    523     760    1106    1348    1643    7365
+# Re-Clustering Cleaned Data 
+> Notes
+
+Now that we have a clean dataset we need to re-cluster things to account for the removal of doublets 
+We can either re-run the above clustering steps for single samples OR we can integrate our replicates together at the same time
+
+
+## Normalize the Data
+```{r}
+#Default = LogNormalize
+BA_clean <- NormalizeData(BA_clean)
+AZ_clean <- NormalizeData(AZ_clean)
+
+## Save clean data - want to eventually integrate with leaf clean normalized data for integrated dataset
+
+saveRDS(BA_clean, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_BA_clean_normalized.rds")
+
+saveRDS(AZ_clean, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_AZ_clean_normalized.rds")
+
+#Notes:
+
+```
+
+
+# Integration via reciprocal PCA (RPCA)
+>Notes
+
+This method is what was suggested in Suerat v4 as of Oct 2023. In their new vignette for Seurat v5 the methodology looks to be updated. This may warrant investigation prior to running the below! I still recommend RPCA, see the linked vginette below for reasons why.
+
+https://satijalAZ.org/seurat/articles/integration_rpca
+We therefore,recommend RPCA during integrative analysis where: * A substantial fraction of cells in one dataset have no matching type in the other
+
+##Data Prep
+```{r}
+BA_clean$sample <- "Stem"
+AZ_clean$sample <- "Stem"
+stem.list <- list(BA_clean, AZ_clean)
+
+# normalize and identify variable features for each dataset independently
+stem.list <- lapply(X = stem.list, FUN = function(x) {
+    x <- NormalizeData(x)
+    x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 3000)
+})
+
+# select features that are repeatedly variable across datasets for integration run PCA on each
+# dataset using these features
+features <- SelectIntegrationFeatures(object.list = stem.list, nfeatures = 3000)
+stem.list <- lapply(X = stem.list, FUN = function(x) {
+    x <- ScaleData(x, features = features, verbose = FALSE)
+    x <- RunPCA(x, features = features, verbose = FALSE)
+})
+```
+
+## Integration 
+```{r}
+stem.anchors <- FindIntegrationAnchors(object.list = stem.list, anchor.features = features, reduction = "rpca")
+
+# this command creates an 'integrated' data assay
+stem.combined <- IntegrateData(anchorset = stem.anchors)
+
+# specify that we will perform downstream analysis on the corrected data note that the
+# original unmodified data still resides in the 'RNA' assay
+DefaultAssay(stem.combined) <- "integrated"
+```
+
+## Stats
+```{r}
+stem.combined
+
+summary(stem.combined$nFeature_RNA)
+summary(stem.combined$nCount_RNA)
+```
+An object of class Seurat 
+78266 features across 14550 samples within 2 assays 
+Active assay: integrated (3000 features, 3000 variable features)
+ 1 layer present: data
+ 1 other assay present: RNA
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    477     683    1026    1402    1815    8489 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  523.0   811.2  1270.0  1939.7  2446.8 21210.0 
+## Scale the Data
+```{r}
+stem.combined.genes <- rownames(stem.combined)
+stem.combined <- ScaleData(stem.combined, features = stem.combined.genes)
+```
+
+## PCA
+```{r}
+stem.combined$Run <- stem.combined@meta.data$orig.ident
+stem.combined <- RunPCA(stem.combined, npcs = 75, features = VariableFeatures(object = stem.combined), verbose = FALSE) # run PCA
+```
+
+```{r}
+ElbowPlot(stem.combined, ndims = 75)
+```
+
+## Call Clusters
+```{r}
+stem.combined <- FindNeighbors(stem.combined, dims = 1:50) #adjust dims based on elbow plot above
+stem.combined <- FindClusters(stem.combined, resolution = 0.5) #adjustAZle resolution value. Check back and forth until it looks good
+stem.combined <- RunUMAP(stem.combined, dims = 1:50)
+```
+
+## Make UMAP Plots
+```{r}
+UMAP1 <- DimPlot(stem.combined, reduction = "umap", repel = T, split.by = "Run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  ) +
+  ggtitle("Grouped by Replicates\n")
+UMAP1
+#check to see that there are the same number of cluster in each rep
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_AZ_BA_integrated_umap.png", height = 8, width = 12, bg = "white")
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_AZ_BA_integrated_umap_small.png", height = 4, width = 10, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_AZ_BA_integrated_umap_small.svg", height = 4, width = 10, bg = "white")
+```
+
+```{r}
+UMAP2 <- DimPlot(stem.combined, reduction = "umap", label = T, label.size = 5, repel = T) +
+  theme_void() +
+  theme(
+    text = element_text(size = 18, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  )
+UMAP2
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_AZ_BA_integrated_umap_all_together.png", height = 8, width = 12, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_AZ_BA_integrated_umap_all_together.svg", height = 8, width = 12, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_AZ_BA_integrated_umap_all_together_small.png", height = 4, width = 6, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_AZ_BA_integrated_umap_all_together_small.svg", height = 4, width = 6, bg = "white")
+```
+
+## Stats - Integrated Clusters
+```{r}
+#Cells in each cluster
+table(Idents(stem.combined))
+
+# Cells in each replicate
+table(stem.combined$orig.ident)
+
+#How does cluster membership vary by replicate?
+table(Idents(stem.combined), stem.combined$orig.ident)
+```
+
+## Save cleaned integrated RDS Object
+```{r}
+DefaultAssay(stem.combined) <- "RNA"
+stem.combined = JoinLayers(stem.combined) #join layers before saving object
+#due to error messages, I ran this and the FindAllMarkers worked. Before doing this, this chunk generated error messages when I ran it: "Warning: No DE genes identifiedWarning: The following tests were not performed: Warning: When testing 0 versus all: data layers are not joined. Please run JoinLayers"
+
+#saveRDS(stem.combined, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_stem_cleaned_integrated.rds")
+stem.combined <- readRDS("/scratch/ac05869/plob_sc/seurat_data/PLU_stem_cleaned_integrated.rds")
+```
+
+# Create Matrices
+##Annotation data - both nuclear mitochondrial and chloroplast
+```{r}
+repr_gene_models <- read_delim("/scratch/ac05869/plob_sc/STAR_index/plob_v4.repr_working.mit.chloro.agat.gtf",
+                               delim = "\t", col_names = F)
+anno <- read_delim("/scratch/ac05869/plu_comparative_final/genomes/plob_v4/plob_v4.functional_annotation.txt", col_names = c("gene_ID", "gene_anno"))
+
+repr_models <- repr_gene_models %>% 
+  dplyr::filter(X3 == "gene") %>% 
+  dplyr::select(X1, X4, X5, X7, X9) %>% 
+  dplyr::rename(
+    Chr = X1,
+    start = X4,
+    end = X5,
+    strand = X7
+  ) %>%
+  separate(X9, c("temp1", "ID", "gene_ID"), sep = ";") %>%
+  mutate(across(everything(), ~ str_trim(str_replace_all(.x, '"', ''))))%>%
+  separate(gene_ID, c("temp", "gene_ID"), sep = " ") %>%
+  dplyr::select(c(Chr, start, end, strand, gene_ID, ID)) %>%
+  left_join(anno, by = "gene_ID") %>%
+  select(-gene_ID)%>%
+  separate(ID, c("temp", "gene_ID"), sep = " ")%>%
+  select(-temp)
+
+head(repr_models)
+dim(repr_models) #130042
+
+write_delim(repr_models, "/scratch/ac05869/plob_sc/seurat_data/repr_gene_models.csv", delim = ",")
+
+repr_models <- read_delim("/scratch/ac05869/plob_sc/seurat_data/repr_gene_models.csv", delim = ",")
+```
+
+# plot pathway genes
+```{r}
+#Need to create a file that has your marker genes and some metadata (cell types, etc.). Change all underscores to either dashes or periods
+path <- read_delim("/scratch/ac05869/plu_comparative_final/pathway/plumeria_iridoid_pathway_synthelogs.txt", delim = "\t")
+head(path)
+path <- path %>%
+  separate_rows(P.obtusa_A, P.obtusa_B, sep = ",") %>%
+  mutate(P.obtusa_A = trimws(P.obtusa_A))%>%
+  mutate(P.obtusa_B = trimws(P.obtusa_B)) %>%
+  filter(
+    !is.na(P.obtusa_A), P.obtusa_A != "",
+    !is.na(P.obtusa_B), P.obtusa_B != ""
+  )
+
+pathA <- path %>%
+  mutate(gene_ID = P.obtusa_A)%>%
+  select(-c(P.obtusa_A, P.obtusa_B)) %>%
+  distinct()
+pathB <- path %>%
+  mutate(gene_ID = P.obtusa_B)%>%
+  select(-c(P.obtusa_A, P.obtusa_B))%>%
+  distinct()
+
+path <- rbind(pathA, pathB) %>%
+  mutate(subgenome = case_when(
+    str_detect(gene_ID, "aG") ~ "A",
+    str_detect(gene_ID, "bG") ~"B")
+  ) %>%
+  arrange(order, subgenome)
+
+path$gene_ID <- gsub("\\.\\d+$", "", path$gene_ID)
+
+rev_path <- path[order(nrow(path):1),]
+head(rev_path)
+
+#write_delim(path, "/scratch/ac05869/plob_sc/seurat_data/plumeria_MEP_iridoid_syntelogs.tsv", delim = "\t")
+path <- read_delim("/scratch/ac05869/plob_sc/seurat_data/plumeria_MEP_iridoid_syntelogs.tsv", delim = "\t")
+rev_path <- path[order(nrow(path):1),]
+```
+## Find Markers 
+
+> Notes
+
+seurat told me to install presto package for "faster implementation of the Wilcoxon Rank Sum Test (default method for FindMarkers)"
+devtools::install_github('immunogenomics/presto')
+```{r}
+DefaultAssay(stem.combined) <- "RNA"
+
+stem.combined.markers <- FindAllMarkers(stem.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) 
+#min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+
+stem.combined.markers_annotated <- stem.combined.markers %>%
+  left_join(repr_models, by = c("gene" = "gene_ID"), relationship = "many-to-many") %>% 
+  left_join(path %>% select(gene_ID, tag, order), by = c("gene" = "gene_ID")) %>%
+  group_by(cluster)
+head(stem.combined.markers_annotated)
+
+
+write.table(stem.combined.markers, "/scratch/ac05869/plob_sc/seurat_data/PLU_stem_markers_minpct0.25_minlfc0.25.txt", quote = FALSE, sep = "\t", row.names = FALSE)
+write_delim(stem.combined.markers_annotated, "/scratch/ac05869/plob_sc/seurat_data/PLU_stem_markers_annotated_minpct0.25_minlfc0.25.tsv", delim = "\t")
+
+```
+
+## Find Average Expression
+```{r}
+DefaultAssay(stem.combined) <- "RNA"
+
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(stem.combined)
+Idents(stem.combined) <- gsub(pattern = " ", replacement = "_", x = Idents(stem.combined))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(stem.combined) <- orig.levels
+cluster.averages <- AverageExpression(stem.combined, return.seurat = TRUE)
+cluster.averages
+
+# How can I extract expression matrix for all Cluster 0 cells (perhaps, to load into another package)
+cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ])
+#Warning: The `slot` argument of `GetAssayData()` is deprecated as of SeuratObject 5.0.0.
+#Please use the `layer` argument instead.
+
+write.table(cluster_avg.data, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_stem_cluster_av.norm.counts.txt", sep = "\t", quote = FALSE, row.names = T)
+heaf(cluster_avg.data)
+```
+# QC Data via Marker Gene Expression Check 
+
+
+```{r}
+DefaultAssay(stem.combined) <- "RNA"
+rev_pathway_genes <- rev_path
+
+dotplot_data <- DotPlot(stem.combined, features = unique(rev_pathway_genes$gene_ID))$data
+#Warning: The following requested variables were not found: Pluob.v4.4bG012540, Pluob.v4.4aG012210, Pluob.v4.10bG023500, Pluob.v4.13aG008510, Pluob.v4.7bG037240, Pluob.v4.7aG037080, Pluob.v4.17bG007060, Pluob.v4.17aG006670
+
+dotplot_data %>% 
+  inner_join(rev_pathway_genes, 
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    LocusID = reorder(LocusID, -.data$order),
+    ylab = paste0(tag, ":", LocusID),
+    ylab = reorder(ylab, -.data$order)
+  ) %>%
+  ggplot(aes(x = id, y = ylab)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster",
+       title = "P.obtusa syntelogs - Stem") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/PLU_stem_pathway_expression_251117_1.png", height = 10, width = 8)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/PLU_stem_pathway_expression_251117_1.svg", height = 10, width = 8)
+```
+#Cell type annotations
+Read in genespace run to find syntelogs of markers in Plumeria
+```{r}
+load(file = "/scratch/ac05869/plu_comparative_final/Genespace/Apocynaceae/wd/results/pangenes_athaliana_ref.rda")
+ortho <- read_delim(file = "/scratch/ac05869/plu_comparative_final/Genespace/Apocynaceae/wd/results/Orthogroups.tsv", delim = "\t")
+View(ortho)
+
+all_syntelogs <- pangenes %>%
+  mutate(
+    across(where(is.list),~ map_chr(.x, ~ paste(.x, collapse = ",")))) %>%
+  separate_rows(A.thaliana, sep = ",") %>%
+  mutate(A.thaliana = trimws(A.thaliana)) 
+
+all_syntelogs$A.thaliana <- gsub("\\.\\d+$", "", all_syntelogs$A.thaliana)
+all_syntelogs$C.roseus <- gsub("\\.\\d+$", "", all_syntelogs$C.roseus)
+
+TAIR <- read_delim(file = "/scratch/ac05869/plob_sc/pathway_analysis/markers/TAIR10_functional_descriptions.txt", delim = "\t")
+
+annotated_syntelogs <- all_syntelogs %>%
+  left_join(TAIR %>% select(-Type), by = c("repGene"= "Model_name"))
+View(annotated_syntelogs)
+```
+#Read in marker genes 
+```{r}
+#/scratch/ac05869/plob_sc/pathway_analysis/markers
+
+markers <- read_delim("/scratch/ac05869/plob_sc/pathway_analysis/markers/Dec2025_compiled_stem_leaf_markers_annotated.tsv", delim = "\t")
+head(markers)
+colnames(markers)
+
+markers2 <- markers %>% select(-DOI1, -DOI2, -DOI3, -DOI4, -Type, -Computational_description) %>%
+  rename(c(gene_ID =Arabidopsis, cell_type = Cell_type))
+colnames(markers2)
+```
+
+## Markers to syntelogs
+```{r}
+colnames(all_syntelogs)
+syntenic_markers.1 <- all_syntelogs %>%
+  filter(A.thaliana %in%  markers2$gene_ID)%>%
+  rename(Marker_ID = A.thaliana) %>%
+  filter(
+    !is.na(P.obtusa_A), P.obtusa_A != "",
+    !is.na(P.obtusa_B), P.obtusa_B != ""
+  )%>%
+  separate_rows(P.obtusa_A, sep = ",") %>%
+  mutate(P.obtusa_A = trimws(P.obtusa_A))%>%
+  separate_rows(P.obtusa_B, sep = ",") %>%
+  mutate(P.obtusa_B = trimws(P.obtusa_B)) %>%
+  select(-start, -end, -pgID, -interpChr, -interpOrd, -og, -repGene, -genome, -chr, -P.rubra_A, -P.rubra_B, -H.carnosa, -A.pictum, -C.roseus)
+
+
+syntenic_markers.2 <- all_syntelogs %>%
+  filter(C.roseus %in%  markers2$gene_ID)%>%
+  rename(Marker_ID = C.roseus) %>%
+  filter(
+    !is.na(P.obtusa_A), P.obtusa_A != "",
+    !is.na(P.obtusa_B), P.obtusa_B != ""
+  )%>%
+  separate_rows(P.obtusa_A, sep = ",") %>%
+  mutate(P.obtusa_A = trimws(P.obtusa_A))%>%
+  separate_rows(P.obtusa_B, sep = ",") %>%
+  mutate(P.obtusa_B = trimws(P.obtusa_B)) %>%
+  select(-start, -end, -pgID, -interpChr, -interpOrd, -og, -repGene, -genome, -chr, -P.rubra_A, -P.rubra_B, -H.carnosa, -A.pictum, -A.thaliana)
+
+syntenic_markers <- rbind(syntenic_markers.1, syntenic_markers.2)
+
+A_markers <- syntenic_markers %>%
+  select(-P.obtusa_B) %>%
+  mutate(gene_ID = P.obtusa_A) %>%
+  select( -P.obtusa_A) %>%
+  left_join(markers2, by = c("Marker_ID" ="gene_ID")) %>%
+  distinct()
+
+B_markers <- syntenic_markers %>%
+  select(-P.obtusa_A)%>%
+  mutate(gene_ID = P.obtusa_B)%>%
+  select( -P.obtusa_B) %>%
+  left_join(markers2, by = c("Marker_ID" ="gene_ID")) %>%
+  distinct()
+
+markers3 <- rbind(A_markers, B_markers) %>%
+  group_by(gene_ID) %>%
+  slice(1) %>%
+  ungroup()%>%
+  mutate(cell_type = case_when(
+    str_detect(cell_type, "Abaxial epidermal") ~ "Abaxial epidermis",
+        str_detect(cell_type, "Abaxial Epidermis") ~ "Abaxial epidermis",
+    str_detect(cell_type, "Companion cells") ~ "Companion cell",
+    T ~ cell_type
+  ))%>%
+  mutate(cell_type2 = case_when(
+    str_detect(cell_type, "epidermis") ~ "Epidermis",
+        str_detect(cell_type, "Epidermis") ~ "Epidermis",
+        str_detect(cell_type, "XP") ~ "Procambium-XP",
+    str_detect(cell_type, "PP") ~ "Procambium-PP",
+        str_detect(cell_type, "Bundle") ~ "Vasculature",
+        str_detect(cell_type, "Xylem") ~ "Xylem",
+            str_detect(cell_type, "xylem") ~ "Xylem",
+                str_detect(cell_type, "endodermis") ~ "Endodermis",
+            str_detect(cell_type, "Phloem parenchyma") ~ "IPAP",
+        str_detect(cell_type, "Sieve") ~ "Vasculature",
+            str_detect(cell_type, "Mesophyll") ~ "Mesophyll",
+            str_detect(cell_type, "Cortex") ~ "Cortex",
+            str_detect(cell_type, "mesophyll") ~ "Mesophyll",
+            str_detect(cell_type, "Vessel") ~ "Vasculature",
+    T ~ cell_type
+  ))%>%
+  mutate(subgenome = case_when(
+    str_detect(gene_ID, "aG") ~ "A",
+    str_detect(gene_ID, "bG") ~"B")) %>%
+  arrange(cell_type2, Name)%>%
+  filter(!(cell_type2 == "Epidermis" & is.na(Short_description) & Sources == "Lee et al 2025")) %>%
+  distinct()
+
+markers3$gene_ID <- gsub("\\.\\d+$", "", markers3$gene_ID)
+dim(markers3)#2309
+
+write_tsv(markers3, file = '/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/Dec2025_compiled_stem_leaf_markers_annotated_plumeria_syntelogs.tsv')
+#markers3 <- read_delim(file = '/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/Dec2025_compiled_stem_leaf_markers_annotated_plumeria_syntelogs.tsv')
+```
+
+
+#Seurat cluster markers with markers
+```{r}
+stem.combined.markers_annotated <- read_delim("/scratch/ac05869/plob_sc/seurat_data/PLU_stem_markers_annotated_minpct0.25_minlfc0.25.tsv", delim = "\t")
+
+stem_clust_anno <- stem.combined.markers_annotated %>%
+  select(-Chr, -start, -end, -strand, -tag, -order)%>%
+  inner_join(markers3 %>% filter(cell_type != "Mesophyll"), by = c('gene' = 'gene_ID')) %>%
+#  select(-cell_type) %>%
+  rename('gene_ID' = 'gene')
+
+write_delim(stem_clust_anno, file = '/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/Plumeria_stem_cluster_markers_annotated.tsv')
+```
+
+Annotated the clusters based on known markers and de novo markers from clustering, and pathway gene expression of MEP pathway (7DLH and G8H for IPAP cells)
+
+
+```{r}
+expressed_markers <- markers3 %>% filter(gene_ID %in% Features(stem.combined))
+dim(expressed_markers)#2171
+dotplot <- DotPlot(stem.combined, features = unique(expressed_markers$gene_ID))$data
+```
+
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(stem_clust_anno %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "stem Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/seurat_marker_expression_17Dec25.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/seurat_marker_expression_17Dec25.png", height = 24, width = 10)
+
+```
+
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type2 == 'Cell division' | cell_type2 == "Embryo") %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "stem Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/cell_division_17Dec25.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/cell_division__17Dec25.png", height = 24, width = 10)
+
+```
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type == 'Cambium') %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "stem Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/Cambium_17Dec25.svg", height = 24, width = 10)
+```
+
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type == 'Epidermis' & cell_type != 'Adaxial Epidermis' & cell_type != 'Abaxial epidermis' & !is.na(Curator_summary)) %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "stem Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/Epidermis2_17Dec25.svg", height = 35, width = 24)
+```
+
+
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type2 == 'Companion cell') %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "stem Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/companion_cells_17Dec25.svg", height = 24, width = 10)
+```
+```{r}
+celltypes <- dotplot %>%
+  inner_join(
+    markers3 %>%
+      filter(cell_type == 'endodermis and Vasculature') %>% mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "stem Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/endodermis_17Dec25.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/endodermis_17Dec25.png", height = 24, width = 10)
+
+```
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type2 == 'Procambium') %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "stem Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/trichome_17Dec25.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/trichome_17Dec25.png", height = 24, width = 10)
+
+```
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type2 == 'Vasculature') %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "stem Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/vasculature_17Dec25.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/vasculature_17Dec25.png", height = 24, width = 10)
+
+```
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type2 == 'Phloem' | cell_type2 == "Procambium" | cell_type2 == "Procambium-PP") %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "stem Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/phloem_17Dec25.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/phloem_17Dec25.png", height = 24, width = 10)
+
+```
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type2 == 'Xylem' | cell_type2 == "Procambium-XP") %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "stem Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/xylem_17Dec25.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/xylem_17Dec25.png", height = 24, width = 10)
+
+```
+
+##Assign clusters according to hypothesized cell-types
+Cluster						
+0	Vasculature	Pluob.v4.13bG014160	AT5G02380	MET2B
+		Pluob.v4.3bG003530	AT5G64080	XYP1
+			0	0
+1	Cortex	Pluob.v4.6bG011580	AT1G64400	LACS3
+		Pluob.v4.11bG007500	AT3G49530	NAC062
+2	Endodermis	Pluob.v4.2bG036530	AT3G16340	ABCG29
+			0	0
+3	Procambium_PP	Pluob.v4.14bG020400	AT1G67360	AT1G67360
+		Pluob.v4.13bG013810	AT5G02490	Hsp70-2
+4	Epidermis	Pluob.v4.11aG010750	AT5G23860	TUB8
+		Pluob.v4.15bG003010	AT3G11650	NHL2
+		Pluob.v4.4bG032590	AT4G34980	SLP2
+5	Cortex	Pluob.v4.11aG007720	AT3G49530	NAC062
+		Pluob.v4.3aG007940	AT3G49530	NAC062
+6	Procambium_PP	Pluob.v4.11aG020830	AT2G34430	LHB1B1
+		Pluob.v4.13aG013270	AT5G02490	Hsp70-2
+		Pluob.v4.13aG013710	AT5G02380	MET2B
+7	IPAP	Pluob.v4.18bG008780	CRO_03G004950	IO
+		Pluob.v4.18aG013140	AT2G37460	UMAMIT12
+		Pluob.v4.10bG008760	AT2G16850	PIP2;8
+		Pluob.v4.2aG021410	AT1G18210	AT1G18210
+		Pluob.v4.16bG018330	AT1G15910	FDM1
+8	Epidermis	Pluob.v4.18bG025220	AT2G27385	AT2G27385
+		Pluob.v4.14bG020300	AT1G27950	LTPG1
+		Pluob.v4.4bG032300	AT4G38770	PRP4
+		Pluob.v4.8bG012210	AT1G25450	KCS5
+		Pluob.v4.4bG029890	AT1G49430	LACS2
+		Pluob.v4.2bG032930	AT5G65020	ANNAT2
+9	Unknown		0	0
+10	Xylem	Pluob.v4.2aG019040	AT1G80760	NIP6;1
+11	Phloem_parenchyma	Pluob.v4.2aG009840	AT3G48740	SWEET11
+		Pluob.v4.4bG032840	AT2G16850	PIP2;8
+12	Phloem_parenchyma	Pluob.v4.13bG028810	AT3G45610	DOF6
+13	Proliferating_epidermis	Pluob.v4.4bG008300	AT4G31840	AT4G31840
+		Pluob.v4.6aG007520	AT1G63100	AT1G63100
+		Pluob.v4.8bG003230	AT3G20150	AT3G20150
+14	Cambium	Pluob.v4.11aG013020	AT5G61480	PXY
+		Pluob.v4.1bG004100	AT5G64080	XYP1
+		Pluob.v4.18bG001340	AT3G12110	ACT11
+		Pluob.v4.16bG020520	AT1G18210	AT1G18210
+15	Xylem	Pluob.v4.6bG034840	AT4G18780	IRX1
+16	Cambium	Pluob.v4.13bG027060	AT3G45010	scpl48
+		Pluob.v4.5bG032580	AT5G61480	PXY
+17	Endodermis	Pluob.v4.2aG016270	AT5G09760	AT5G09760
+		Pluob.v4.4aG030950	AT2G16850	PIP2;8
+18	Unknown		0	0
+19	Sieve	Pluob.v4.12bG017860	AT1G31200	AT1G31200
+20	IPAP	Pluob.v4.18aG008600	CRO_03G004950	IO
+		Pluob.v4.4bG014130	CRO_03G018360	7DLH
+21	Unknown		0	0
+
+c("Pluob.v4.13bG014160",	"Pluob.v4.3bG003530",		"Pluob.v4.6bG011580",	"Pluob.v4.11bG007500",	"Pluob.v4.2bG036530",		"Pluob.v4.14bG020400",	"Pluob.v4.13bG013810",	"Pluob.v4.11aG010750",	"Pluob.v4.15bG003010",	"Pluob.v4.11aG007720",	"Pluob.v4.3aG007940",	"Pluob.v4.11aG020830",	"Pluob.v4.13aG013270",	"Pluob.v4.13aG013710",	"Pluob.v4.18bG008780",	"Pluob.v4.18aG013140",	"Pluob.v4.10bG008760",	"Pluob.v4.2aG021410",	"Pluob.v4.16bG018330",	"Pluob.v4.18bG025220",	"Pluob.v4.14bG020300",	"Pluob.v4.4bG032300",	"Pluob.v4.8bG012210",	"Pluob.v4.4bG029890",	"Pluob.v4.2bG032930",		"Pluob.v4.2aG019040",	"Pluob.v4.2aG009840",	"Pluob.v4.4bG032840",	"Pluob.v4.13bG028810",	"Pluob.v4.4bG008300",	"Pluob.v4.6aG007520",	"Pluob.v4.8bG003230",	"Pluob.v4.11aG013020",	"Pluob.v4.1bG004100",	"Pluob.v4.18bG001340",	"Pluob.v4.16bG020520",	"Pluob.v4.6bG034840",	"Pluob.v4.13bG027060",	"Pluob.v4.5bG032580",	"Pluob.v4.2aG016270",	"Pluob.v4.4aG030950",		"Pluob.v4.12bG017860",	"Pluob.v4.18aG008600",	"Pluob.v4.4bG014130")
+
+```{r}
+patterns <- c("Pluob.v4.13bG014160",	"Pluob.v4.3bG003530",		"Pluob.v4.6bG011580",	"Pluob.v4.11bG007500",	"Pluob.v4.2bG036530",		"Pluob.v4.14bG020400",	"Pluob.v4.13bG013810",	"Pluob.v4.11aG010750",	"Pluob.v4.15bG003010",	"Pluob.v4.11aG007720",	"Pluob.v4.3aG007940",	"Pluob.v4.11aG020830",	"Pluob.v4.13aG013270",	"Pluob.v4.13aG013710",	"Pluob.v4.18bG008780",	"Pluob.v4.18aG013140",	"Pluob.v4.10bG008760",	"Pluob.v4.2aG021410",	"Pluob.v4.16bG018330",	"Pluob.v4.18bG025220",	"Pluob.v4.14bG020300",	"Pluob.v4.4bG032300",	"Pluob.v4.8bG012210",	"Pluob.v4.4bG029890",	"Pluob.v4.2bG032930",		"Pluob.v4.2aG019040",	"Pluob.v4.2aG009840",	"Pluob.v4.4bG032840",	"Pluob.v4.13bG028810",	"Pluob.v4.4bG008300",	"Pluob.v4.6aG007520",	"Pluob.v4.8bG003230",	"Pluob.v4.11aG013020",	"Pluob.v4.1bG004100",	"Pluob.v4.18bG001340",	"Pluob.v4.16bG020520",	"Pluob.v4.6bG034840",	"Pluob.v4.13bG027060",	"Pluob.v4.5bG032580",	"Pluob.v4.2aG016270",	"Pluob.v4.4aG030950",		"Pluob.v4.12bG017860",	"Pluob.v4.18aG008600",	"Pluob.v4.4bG014130")
+pattern_regex <- str_c(patterns, collapse = "|")
+stem_markers <- expressed_markers %>% filter(str_detect(gene_ID, pattern_regex)) %>%
+  mutate(Name2 = case_when(
+    str_detect(Name, "^AT\\d+G") ~ Short_description,
+    T ~ Name
+  ))%>%
+  mutate(Name = case_when(
+    str_detect(Name2, "Calcium-binding EF-hand family protein") ~ "CA bind EF-hand",
+    str_detect(Name2, "Rubber elongation factor") ~ "REF",
+    str_detect(Name2, "GRAS family transcription factor") ~ "GRAS",
+    str_detect(Name2, "Kinesin motor family protein") ~ "Kinesin motor",
+    str_detect(Name2, "KNOTTED") ~ "KNOTTED",
+    str_detect(Name2, "O-fucosyltransferase") ~ "(O-FucT)",
+    str_detect(Name2, "S-adenosyl-L-methionine-dependent") ~ "SAM-dependent MT",
+    str_detect(Name2, "MBOAT") ~ "MBOAT",
+    str_detect(Name2, "Plant invertase/pectin methylesterase") ~ "pectin MT inhib",
+    str_detect(Name2, "Pollen Ole e 1") ~ "Pollen Ole e 1",
+    str_detect(Name2, "early nodulin-like protein 15") ~ "nodulin-like protein ",
+    T ~ Name2
+  ))
+
+#Add genes not in marker list
+denovo <- tibble(
+  Name       = c("H2AX"),
+  cell_type2  = c("Cell division"),
+  cell_type  = c("Cell division"),
+  Organ      = c("Stem"),
+  gene_ID    = c("Pluob.v4.11bG036540"),
+  subgenome  = c("B")
+)
+
+stem_markers <- bind_rows(stem_markers, denovo)
+```
+
+
+```{r}
+dotplot <- DotPlot(stem.combined, features = unique(stem_markers$gene_ID))$data
+celltypes2 <- dotplot %>% 
+  inner_join(stem_markers %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID"), multiple = 'first') %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type2,':', features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Markers",
+       x = "Stem Clusters") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+       # axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes2
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/selective_marker_expression_17Dec25.png", height = 9, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/selective_marker_expression_17Dec25.svg", height = 9, width = 10)
+
+```
+#save markers as table
+
+```{r}
+write_delim(stem_markers, file = "/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/markers_used_17Dec25.csv", delim = ",")
+```
+
+#Reorder the columns by cell types
+```{r}
+
+Marker_dotplot <- DotPlot(stem.combined, 
+                          features = unique(stem_markers$gene_ID))
+
+Marker_dotplot_nice_df <- Marker_dotplot$data %>% 
+  mutate(gene_ID = row.names(.)) %>% 
+  full_join(stem_markers %>% 
+              distinct(gene_ID, .keep_all = T),
+             by = join_by(features.plot == gene_ID)) %>% 
+    mutate(gene_ID = str_sub(gene_ID, end = -8)) %>% 
+   mutate(cell_type3 = case_when(
+    str_detect(cell_type, "PP") ~ "Phloem",
+    str_detect(cell_type, "XP") ~ "Xylem",
+    str_detect(cell_type, "Companion") ~ "Companion",
+    str_detect(cell_type, "Trichome") ~ "Sieve",
+    str_detect(cell_type, "Xylem") ~ "Xylem",
+    str_detect(cell_type, "Phloem") ~ "Phloem",
+    str_detect(cell_type, "Epi") ~ "Epiderm",
+    str_detect(cell_type, "endo") ~ "Endoderm",
+        str_detect(cell_type, "Cortex") ~ "Cortex",
+        str_detect(cell_type, "Cambium") ~ "Cambium",
+    str_detect(cell_type, "Cell division|Embryo")  ~ "Prolif",
+    T ~ cell_type
+  )) %>% 
+  mutate(cell_type3 = factor(cell_type3, levels = c(
+    "Cortex", "Endoderm", "Epiderm", "Cambium", "Phloem","Sieve", "Xylem", "Companion","Vasculature", "Prolif","IPAP"
+  ))) %>% 
+  mutate(cell_type4 = as.numeric(cell_type3)) %>% 
+  mutate(gene_ID = reorder(gene_ID, -cell_type4)) %>% 
+  mutate(LocusID = str_remove(
+               str_sub(features.plot, end = -8),
+               "^Pluob\\.v4\\."),
+    ylab = paste0(features.plot),
+    ylab2 = paste0(cell_type3,':', features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -cell_type4)) %>%
+  mutate(id = factor(id, levels = c(
+    "1", "5","6", #Cortex
+    "2", #Endodermis
+    "8", #Epidermis
+    "14", "16", #Cambium
+    "11", "12","19", #Sieve#Phloem
+    "7", "20", #IPAP
+   "10","15", "17",  #Xylem
+    "4","13",#Proliferating
+     "0","3","9", "18", "21" #Unassigned
+  ))) %>% 
+  dplyr::filter(is.na(avg.exp.scaled) == F)
+
+```
+
+0	Vasculature
+1	Cortex
+2	Endodermis
+3	Unassigned
+4	Proliferating
+5	Cortex
+6	Procambium_PP
+7	IPAP
+8	Epidermis
+9	Unknown
+10	UNKNOWN
+11	Phloem_parenchyma
+12	Phloem_parenchyma
+13	Proliferating_epidermis
+14	Cambium
+15	Xylem
+16	Cambium
+17	Xylem
+18	Unknown
+19	Sieve
+20	IPAP
+21	Unknown
+
+```{r}
+Marker_dot <- Marker_dotplot_nice_df %>% ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(y = "",
+       x = "Stem Clusters",
+       fill = "Avg. Exp.",
+       size = "% Exp.") +
+  scale_y_discrete(labels = setNames(Marker_dotplot_nice_df$ylab2, Marker_dotplot_nice_df$ylab)) +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+```
+    "1", "5","6", #Cortex
+    "2", #Endodermis
+    "8", #Epidermis
+    "14", "16", #Cambium
+    "11", "12","19", #Sieve#Phloem
+    "7", "20", #IPAP
+   "10","15", "17",  #Xylem
+    "4","13",#Proliferating
+     "0","3","9", "18", "21" #Unassigned
+##reorder clusters according to hypothesized cell-types
+
+```{r}
+stem_cell_type_assignment <- data.frame(
+  cluster = c(0:21)
+) %>%  mutate(cell_type = case_when(
+    cluster == 1 | 
+      cluster == 5 |
+      cluster ==  6 ~ "Cortex",
+    cluster == 2 ~ "Endoderm",
+      cluster == 8 ~ "Epiderm",
+      cluster == 14 |
+      cluster == 16  ~ "Cambium",
+      cluster == 11 |
+        cluster == 12 |
+      cluster == 19 ~ "Phloem",
+    cluster == 7 |
+      cluster == 20  ~ "IPAP",
+        cluster == 10 |
+        cluster == 15 |
+      cluster == 17  ~ "Xylem",
+    cluster == 4 |
+    cluster == 13  ~ "Proliferating",
+      cluster == 0 |
+      cluster == 3 |
+    cluster == 9 |
+    cluster == 18 |
+      cluster == 21 ~ "Unassigned",
+    T ~ "Unassigned"
+  )) %>% 
+  mutate(cell_type = factor(cell_type, levels = c(
+    "Cortex", "Endoderm", "Epiderm", "Cambium", "Phloem","IPAP", "Xylem", "Proliferating","Unassigned"
+ ))) %>% 
+  mutate(cluster = factor(cluster, levels = c(
+    "1", "5","6", #Cortex
+    "2", #Endodermis
+    "8", #Epidermis
+    "14", "16", #Cambium
+    "11", "12","19", #Sieve#Phloem
+    "7", "20", #IPAP
+   "10","15", "17",  #Xylem
+    "4","13",#Proliferating
+     "0","3","9", "18", "21" #Unassigned
+  )))
+
+stem_cell_type_strip <- stem_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "" )) +
+  geom_tile(aes(fill = cell_type)) +
+  scale_fill_manual(values = c(brewer.pal(8, "Set3"), "grey80")) +
+  guides(fill = guide_legend(nrow = 3)) +
+  labs(fill = "Cell type") +
+  theme_void() +
+  theme(
+    legend.position = "bottom" ,
+    text = element_text(size = 14)
+  )
+
+stem_cell_type_strip
+```
+
+
+```{r}
+stem_cell_type_mkr_text <- Marker_dotplot_nice_df %>% 
+  dplyr::filter(id == 0) %>% 
+  ggplot(aes(x = "", y = ylab2)) +
+  geom_text(aes(label = Name), fontface = "italic") +
+  theme_void()
+stem_cell_type_mkr_text
+
+blank <- data.frame(
+  x = 0,
+  y = 0
+) %>% 
+  ggplot(aes(x, y)) +
+  theme_void()
+
+Marker_dot_strip <- wrap_plots(Marker_dot, stem_cell_type_mkr_text,
+          stem_cell_type_strip, blank,
+          heights = c(1, 0.03), 
+          widths = c(1, 0.2), nrow = 2, ncol = 2)
+
+Marker_dot_strip
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/plumeria_stem_cluster_assignment_17Dec25.png", height = 8, width = 14)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/plumeria_stem_cluster_assignment_17Dec25.svg", height = 8, width = 14)
+```
+
+# UMAP with cell type info
+```{r}
+stem.combined <- readRDS("/scratch/ac05869/plob_sc/seurat_data/PLU_stem_cleaned_integrated.rds")
+
+stem.combined@meta.data <- stem.combined@meta.data %>% 
+  mutate(cell_type = case_when(
+      seurat_clusters == 1 | 
+      seurat_clusters == 5 |
+      seurat_clusters ==  6 ~ "Cortex",
+    seurat_clusters == 2 ~ "Endoderm",
+      seurat_clusters == 8 ~ "Epiderm",
+      seurat_clusters == 14 |
+      seurat_clusters == 16  ~ "Cambium",
+      seurat_clusters == 11 |
+        seurat_clusters == 12 |
+      seurat_clusters == 19 ~ "Phloem",
+    seurat_clusters == 7 |
+      seurat_clusters == 20  ~ "IPAP",
+        seurat_clusters == 10 |
+        seurat_clusters == 15 |
+      seurat_clusters == 17  ~ "Xylem",
+    seurat_clusters == 4 |
+    seurat_clusters == 13  ~ "Proliferating",
+      seurat_clusters == 0 |
+      seurat_clusters == 3 |
+    seurat_clusters == 9 |
+    seurat_clusters == 18 |
+      seurat_clusters == 21 ~ "Unassigned",
+    T ~ "Unassigned"
+  ))%>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+    "Cortex", "Endoderm", "Epiderm", "Cambium", "Phloem","IPAP", "Xylem", "Proliferating","Unassigned"
+ )))
+
+DimPlot(stem.combined, reduction = "umap", label = T,
+        group.by = "cell_type", label.size = 5, repel = T
+        ) +
+  theme_void() +
+  scale_color_manual(values = c(brewer.pal(8, "Set3"), "grey80")) +
+  labs(title = "") +
+  theme(
+    text = element_text(size = 14, color = "black"),
+    legend.position = "none")
+
+#c(brewer.pal(8, "Set3"), "grey80") #"#8DD3C7" "#FFFFB3" "#BEBADA" "#FB8072" "#80B1D3" "#FDB462" "#B3DE69" "#FCCDE5" "grey80"
+
+stem.colors<- c("0" = "grey80",
+                "1" = "#8DD3C7",
+                "2" = "#FFFFB3",
+                "3" = "grey80",
+                "4" = "#FCCDE5",
+                "5" = "#8DD3C7",
+                "6" = "#8DD3C7",
+                "7" = "#FDB462",
+                "8" = "#BEBADA",
+                "9" =  "grey80",
+                "10" = "#B3DE69",
+                "11" = "#80B1D3",
+                "12" = "#80B1D3",
+                "13" = "#FCCDE5",
+                "14" = "#FB8072",
+                "15" = "#B3DE69",
+                "16" = "#FB8072",
+                "17" = "#B3DE69",
+                "18" = "grey80",
+                "19" = "#80B1D3",
+                "20" = "#FDB462",
+                "21" = "grey80")
+
+UMAP3 <- DimPlot(stem.combined, reduction = "umap", label = F, label.size = 5, repel = T) +
+  theme_void() +
+  labs(title = "") +
+  theme(
+    text = element_text(size = 14, color = "black"),
+    legend.position = "none")+ 
+    scale_color_manual(values = stem.colors)
+
+UMAP3
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/UMAP_cell_types_18Dec25.svg", height = 6, width = 5, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/UMAP_cell_types_18Dec25.png", height = 6, width = 5, bg = "white")
+```
+
+```{r}
+stem_assignment_graph <- stem_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "")) +
+  facet_wrap(~ cell_type, scales = "free", ncol = 2) +
+  geom_point(size = 5, aes(color = cell_type)) +
+  geom_text(aes(label = cluster)) +
+  labs(x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  scale_color_manual(values = c(brewer.pal(8, "Set3"), "grey80")) +
+  theme(
+    legend.position = "none",
+    panel.grid = element_blank(),
+    text = element_text(size = 14, color = "black"),
+    axis.text.x = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA)
+    )
+
+stem_assignment_graph
+
+RNA_umap <- wrap_plots(UMAP3 +
+                         labs(tag = ""), stem_assignment_graph, 
+           nrow = 2 , heights = c(1, 0.7))
+
+RNA_umap
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/UMAP_cell_types_legend_18Dec25.svg", height = 8, width = 5, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/UMAP_cell_types_legend_18Dec25.png", height = 8, width = 5, bg = "white")
+```
+
+#stats by cell type
+```{r}
+stem.combined@meta.data %>% 
+  group_by(cell_type) %>% 
+  dplyr::count() %>% 
+  mutate(total = nrow(stem.combined@meta.data)) %>% 
+  mutate(percentage = n/total) %>% 
+  ungroup()
+```
+
+c(
+                              "Cortex", "Endoderm", "Epiderm",
+                              "Cambium", "Phloem","IPAP", "Xylem",
+                              "Proliferating","Unassigned"
+                              )
+```{r}
+RNA_by_rep <- stem.combined@meta.data %>% 
+  group_by(cell_type, Run) %>% 
+  dplyr::count() %>% 
+  inner_join(
+    stem.combined@meta.data %>% 
+  group_by(Run) %>% 
+  dplyr::count() %>% 
+  ungroup() %>% 
+  dplyr::rename(total = n), 
+  by = "Run"
+  ) %>% 
+  mutate(percentage = n/total * 100) %>% 
+  ungroup() %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Cortex", "Endoderm", "Epiderm",
+                              "Cambium", "Phloem","IPAP", "Xylem",
+                              "Proliferating","Unassigned"
+                              ))) %>% 
+  mutate(cell_type = fct_rev(cell_type)) %>% 
+  mutate(Run = case_when(
+    Run == "PLU_AZ" ~ "Rep1",
+    Run == "PLU_BA" ~ "Rep2"
+  )) %>% 
+  ggplot(aes(x = Run, y = percentage)) +
+  geom_bar(stat = "identity", aes(fill = cell_type)) +
+  scale_fill_manual(values = rev(c(brewer.pal(8, "Set3"), "grey80"))) +
+  labs(x = "", 
+       y = "% cells by cell type",
+       fill = "cell type") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  theme(axis.text.y = element_text(angle = 0, hjust = 1, color = "black"))
+
+RNA_by_rep
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/cell_type_proportions_18Dec25.svg", height = 6, width = 3, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/stem/cell_type_proportions_18Dec25.png", height = 6, width = 3, bg = "white")
+```
+
+#UMAP highlight gene
+```{r}
+test <- DimPlot(stem.combined, reduction = "umap", label = T, label.size = 5, repel = T
+        ) +
+  theme_void() +
+  labs(title = "") +
+  theme(
+    text = element_text(size = 14, color = "black"),
+    legend.position = "none")
+test
+stem.combined
+# Feature plot - visualize feature expression in low-dimensional space
+FeaturePlot(stem.combined, features = c("Pluob.v4.16aG010760")) #Phloem/Companion cell: ortholog of CRO_05G001460 (SWEET11)
+FeaturePlot(stem.combined, features = c("Pluob.v4.2bG036530")) #Endodermis cell ABCG29 (Pluob.v4.2bG036530) 
+FeaturePlot(stem.combined, features = c("Pluob.v4.10bG031750")) # Xylem cell ACL5, ortholog of CRO_01G029560 (Pluob.v4.10aG031230) (Pluob.v4.10bG031750)
+LabelClusters(plot = FeaturePlot(stem.combined, features = c("Pluob.v4.6aG032960")), id = "ident")+ #Xylem, IRX1 (Pluob.v4.6aG032960)
+  theme_void()
+LabelClusters(plot = FeaturePlot(stem.combined, features = c("Pluob.v4.10bG024590")), id = "ident")+ #Sieve, CALS7 (Pluob.v4.10bG024590)
+  theme_void()
+
+```
+

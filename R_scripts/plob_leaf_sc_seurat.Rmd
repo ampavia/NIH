@@ -1,0 +1,2610 @@
+---
+title: "Plumeria leaf single cell"
+author: "Anne Pavia"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(Seurat) 
+library(readxl)
+library(RColorBrewer)
+library(viridis)
+library(svglite) 
+library(patchwork)
+library(cowplot)
+library(ggpubr)
+library(showtext)
+```
+#Notes: 
+Started October 31 with Seurat v5
+## leaf 
+reps 1 and 2 with two flow cell runs each; protoplasts; PIPseq v5 kit, pipseeker-v3.3.0-linux; #EM algorithm #mapped on plob_v4 assembly
+>PLU_BB: ~35,775 protoplast input, expect ~17,887 out
+>PLU_BC: ~35,775 protoplast input, expect ~17,887 out
+
+# Load Data for leaf
+
+```{r}
+#Note that you have to gzip these files, as Seurat expects them to be zipped to match CellRangers output (zipped in CellRanger output from v3 or higher). STARsolo did not gzip these by default
+
+PLU_BB_raw <- Read10X(data.dir = "/scratch/ac05869/plob_sc/STARsolo/PLU_BB_Solo.out/GeneFull/raw/data_for_R/EM_EmptyDrops_Combined")
+PLU_BC_raw <- Read10X(data.dir = "/scratch/ac05869/plob_sc/STARsolo/PLU_BC_Solo.out/GeneFull/raw/data_for_R/EM_EmptyDrops_Combined")
+
+```
+
+# Create Seurat Objects
+
+```{r}
+BB <- CreateSeuratObject(counts = PLU_BB_raw, min.cells = 3, min.features = 50,
+                         project = "PLU_BB")
+BC <- CreateSeuratObject(counts = PLU_BC_raw, min.cells = 3, min.features = 50,
+                         project = "PLU_BC")
+```
+## Summary Statistics
+###Before any cleaning
+```{r}
+summary(BB$nFeature_RNA)
+summary(BB$nCount_RNA)
+
+summary(BC$nFeature_RNA)
+summary(BC$nCount_RNA)
+```
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    266     757    1276    2074    2509   15284 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    597     888    1552    3282    3451   48368 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    377     663    1082    1643    1999   16029 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    498     750    1261    2290    2515   49647 
+
+# Data QC
+You may or may not be able to do organellar filtering based on what you aligned to - take notes of organellar filtering. How much % remove?
+## Organelles
+
+Data QC - Chloroplast and Mitochondrion Flags
+Add column with organellar percentage to filter data on 
+The [[ operator can add columns to object metadata. This is a great place to stash QC stats
+
+Plumera obtusa SPECIFIC EXAMPLE
+Any gene that doesn't start with ^Pluob is an organellar gene
+#Check the minimum and maximum percentage of organellar reads in a given cell
+```{r}
+##rep1
+BB[["percent.normal"]] <- PercentageFeatureSet(BB, pattern = "^Pluob")
+BB[["percent.organellar"]] <- (100 - BB[["percent.normal"]])
+
+min(BB[["percent.normal"]]) #34.98049
+max(BB[["percent.normal"]]) #100
+
+min(BB[["percent.organellar"]])#0
+max(BB[["percent.organellar"]])#65.01951
+
+##rep2
+
+BC[["percent.normal"]] <- PercentageFeatureSet(BC, pattern = "^Pluob")
+BC[["percent.organellar"]] <- (100 - BC[["percent.normal"]])
+
+min(BC[["percent.normal"]])#41.72892
+max(BC[["percent.normal"]])#100
+
+min(BC[["percent.organellar"]])#0
+max(BC[["percent.organellar"]])#58.27108
+```
+
+## Plotting QC Values
+```{r}
+VlnPlot(BB, features = c("nFeature_RNA", "nCount_RNA", "percent.organellar"), ncol = 3, raster = FALSE)
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/BB_violin_plots.png", height = 8, width = 8, bg = "white")
+
+#nCount = number of UMIs per cell
+#nFeature = number of Genes per cell
+
+VlnPlot(BC, features = c("nFeature_RNA", "nCount_RNA", "percent.organellar"), ncol = 3, raster = FALSE)
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/BC_violin_plots.png", height = 8, width = 8, bg = "white")
+
+#nCount = number of UMIs per cell
+#nFeature = number of Genes per cell
+```
+
+## Organellar Filtering
+```{r}
+#this is for Chloroplast and Mitochondria, I just name it "chloro_filt" 
+
+BB #14858 cells
+BB_chloro_filt <- subset(BB, subset = percent.organellar < 5) #remove all cells with above 5% organellar reads
+BB_chloro_filt # 13507
+
+BC #13850
+BC_chloro_filt <- subset(BC, subset = percent.organellar < 5) #remove all cells with above 5% organellar reads
+BC_chloro_filt #12718
+```
+
+## Organellar Filtering
+```{r}
+#Check the new distrubution of organellar read percentage now that the data is filtered and easier to see. May need to adjust filtering!
+
+VlnPlot(BB_chloro_filt, features = c("percent.organellar"), raster = FALSE)
+
+#LIB_ID: 5% 
+# Starts:   Ends:   Removed: 
+
+VlnPlot(BC_chloro_filt, features = c("percent.organellar"), raster = FALSE)
+
+#LIB_ID: 5% 
+# Starts:   Ends:   Removed: 
+```
+
+## Plotting for Cutoff Selection
+```{r}
+#blank data frame/plot for helping to organize plots 
+#every single dataset is different. BLUE: UMIs. Make so that one read to one gene is the minimum. With a lot of cells we can be more stringent and throw out more. Get rid of "extremes". What is the mean UMIs per gene? This is a metric that people might pay more attention to in the future.
+
+blank <- data.frame(
+  x = 1:10000,
+  y = 1:10000
+) %>% 
+  ggplot(aes(x = x, y = y)) +
+  theme_void()
+```
+###Rep1
+```{r}
+#You should generate a plot with test values and adjust based on the dataset!
+#I plot the full dataset and the organellar filtered dataset to be able to visualize how the organellar filtering impacts the data
+
+BB_scatter <- BB@meta.data %>% 
+  ggplot(aes(x = nCount_RNA, y = nFeature_RNA)) +
+  geom_point() + ggtitle("PLU_BB pipseq") +
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_hline(yintercept=500, color = "red") + #Set minimum number of genes to be expressed per cell
+  geom_hline(yintercept=10000, color = "red") + #Set maximum number of genes to be expressed per cell
+  geom_vline(xintercept=500, color = "blue") + #Set minimum number of UMI's per cell
+  geom_vline(xintercept=50000, color = "blue") #Set maximum number of UMI's per cell
+
+#Below two plots should match the above values and colors
+BB_count_hist <- BB@meta.data %>% 
+  ggplot(aes(x = nCount_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "blue") + 
+  geom_vline(xintercept = 50000, color = "blue") +
+  scale_x_log10()
+
+BB_feature_hist <- BB@meta.data %>% 
+  ggplot(aes(x = nFeature_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "red") +
+  geom_vline(xintercept = 10000, color = "red") +
+  scale_x_log10() +
+  coord_flip()
+
+wrap_plots(
+  BB_count_hist, blank,
+  BB_scatter, BB_feature_hist,
+  nrow = 2, ncol = 2, 
+  widths = c(1, 0.2), 
+  heights = c(0.2, 1)
+)
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/BB_cutoffs.png", height = 8, width = 8, bg = "white")
+
+#Same as above but use the organellar filtered dataset so I can do a comparison
+
+BB_scatter <- BB_chloro_filt@meta.data %>% 
+  ggplot(aes(x = nCount_RNA, y = nFeature_RNA)) +
+  geom_point() + ggtitle("PLU_BB pipseq - Organelle Filtering First") +
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_hline(yintercept=500, color = "red") +
+  geom_hline(yintercept=10000, color = "red") +
+  geom_vline(xintercept=500, color = "blue") +
+  geom_vline(xintercept=50000, color = "blue")
+
+BB_count_hist <- BB_chloro_filt@meta.data %>% 
+  ggplot(aes(x = nCount_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "blue") +
+  geom_vline(xintercept = 50000, color = "blue") +
+  scale_x_log10()
+
+BB_feature_hist <- BB_chloro_filt@meta.data %>% 
+  ggplot(aes(x = nFeature_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "red") +
+  geom_vline(xintercept = 10000, color = "red") +
+  scale_x_log10() +
+  coord_flip()
+
+wrap_plots(
+  BB_count_hist, blank,
+  BB_scatter, BB_feature_hist,
+  nrow = 2, ncol = 2, 
+  widths = c(1, 0.2), 
+  heights = c(0.2, 1)
+)
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/BB_chloro_filt_cutoffs.png", height = 8, width = 8, bg = "white")
+```
+
+###rep 2
+```{r}
+#You should generate a plot with test values and adjust based on the dataset!
+#I plot the full dataset and the organellar filtered dataset to be able to visualize how the organellar filtering impacts the data
+
+BC_scatter <- BC@meta.data %>% 
+  ggplot(aes(x = nCount_RNA, y = nFeature_RNA)) +
+  geom_point() + ggtitle("PLU_BC pipseq") +
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_hline(yintercept=500, color = "red") + #Set minimum number of genes to be expressed per cell
+  geom_hline(yintercept=10000, color = "red") + #Set maximum number of genes to be expressed per cell
+  geom_vline(xintercept=500, color = "blue") + #Set minimum number of UMI's per cell
+  geom_vline(xintercept=50000, color = "blue") #Set maximum number of UMI's per cell
+
+#Below two plots should match the above values and colors
+BC_count_hist <- BC@meta.data %>% 
+  ggplot(aes(x = nCount_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "blue") + 
+  geom_vline(xintercept = 50000, color = "blue") +
+  scale_x_log10()
+
+BC_feature_hist <- BC@meta.data %>% 
+  ggplot(aes(x = nFeature_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "red") +
+  geom_vline(xintercept = 10000, color = "red") +
+  scale_x_log10() +
+  coord_flip()
+
+wrap_plots(
+  BC_count_hist, blank,
+  BC_scatter, BC_feature_hist,
+  nrow = 2, ncol = 2, 
+  widths = c(1, 0.2), 
+  heights = c(0.2, 1)
+)
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/BC_cutoffs.png", height = 8, width = 8, bg = "white")
+
+#Same as above but use the organellar filtered dataset so I can do a comparison
+
+BC_scatter <- BC_chloro_filt@meta.data %>% 
+  ggplot(aes(x = nCount_RNA, y = nFeature_RNA)) +
+  geom_point() + ggtitle("PLU_BC pipseq - Organelle Filtering First") +
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_hline(yintercept=500, color = "red") +
+  geom_hline(yintercept=10000, color = "red") +
+  geom_vline(xintercept=500, color = "blue") +
+  geom_vline(xintercept=50000, color = "blue")
+
+BC_count_hist <- BC_chloro_filt@meta.data %>% 
+  ggplot(aes(x = nCount_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "blue") +
+  geom_vline(xintercept = 50000, color = "blue") +
+  scale_x_log10()
+
+BC_feature_hist <- BC_chloro_filt@meta.data %>% 
+  ggplot(aes(x = nFeature_RNA)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 500, color = "red") +
+  geom_vline(xintercept = 10000, color = "red") +
+  scale_x_log10() +
+  coord_flip()
+
+wrap_plots(
+  BC_count_hist, blank,
+  BC_scatter, BC_feature_hist,
+  nrow = 2, ncol = 2, 
+  widths = c(1, 0.2), 
+  heights = c(0.2, 1)
+)
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/BC_chloro_filt_cutoffs.png", height = 8, width = 8, bg = "white")
+```
+
+
+# Data Set Filtering
+```{r}
+#Based on above plots filter dataset appropriately 
+
+BB#74420 features across 14858 samples
+BB <- subset(BB, subset = nFeature_RNA > 500 & nFeature_RNA < 10000 & nCount_RNA > 500 & nCount_RNA < 50000 & percent.organellar < 5)
+BB#74420 features across 13357 samples within 1 assay 
+
+##Remove genes that have organellar ID's
+countsBB <- GetAssayData(BB, assay = "RNA")
+keepBB <- grepl("^Pluob\\.v4", rownames(countsBB))
+counts_filteredBB <- countsBB[keepBB, ]
+head(counts_filteredBB)
+BB<- subset(BB, features = rownames(counts_filteredBB))
+BB
+#After Filtering
+#74377 features across 13357 samples
+#43 genes removed
+
+BC #71900 features across 13850 samples
+BC <- subset(BC, subset = nFeature_RNA > 500 & nFeature_RNA < 10000 & nCount_RNA > 500 & nCount_RNA < 50000 & percent.organellar < 5)
+BC #71900 features across 11829 samples
+
+##Remove genes that have organellar ID's
+countsBC <- GetAssayData(BC, assay = "RNA")
+keepBC <- grepl("^Pluob\\.v4", rownames(countsBC))
+counts_filteredBC <- countsBC[keepBC, ]
+head(counts_filteredBC)
+BC<- subset(BC, features = rownames(counts_filteredBC))
+BC
+#After Filtering
+#71867 features across 11829 samples
+#33 genes filtered out
+```
+
+
+
+## Summary Statistics
+###rep1
+```{r}
+summary(BB$nFeature_RNA)
+summary(BB$nCount_RNA)
+
+summary(BC$nFeature_RNA)
+summary(BC$nCount_RNA)
+
+```
+    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    501     783    1361    2092    2630    9979 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    598     913    1664    3225    3638   28944 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    501     754    1229    1774    2186    9968 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    528     851    1438    2469    2807   24709 
+# Data Processing - QC First Look
+>Notes
+
+We want to process the data as a quick QC to check clustering
+This preprocessing is also required to do Doublet Filtering 
+
+## Normalize the Data
+
+```{r}
+#Default = LogNormalize
+BC <- NormalizeData(BC)
+BB <- NormalizeData(BB)
+```
+
+## Clustering
+
+```{r}
+#Select Highly Variable Features
+BC <- FindVariableFeatures(BC, selection.method = "vst", nfeatures = 3000)
+BB <- FindVariableFeatures(BB, selection.method = "vst", nfeatures = 3000)
+```
+
+## Scale the Data
+
+```{r}
+BC.genes <- rownames(BC)
+BC <- ScaleData(BC, features = BC.genes)
+
+BB.genes <- rownames(BB)
+BB <- ScaleData(BB, features = BB.genes)
+```
+
+## PCA
+
+```{r}
+BC$Run <- BC@meta.data$orig.ident
+BC <- RunPCA(BC, npcs = 75, features = VariableFeatures(object = BC), verbose = FALSE) # run PCA (principal component analysis)
+
+BB$Run <- BB@meta.data$orig.ident
+BB <- RunPCA(BB, npcs = 75, features = VariableFeatures(object = BB), verbose = FALSE) # run PCA
+```
+
+```{r}
+#Elbow plot helps us quickly estimate/check for how many PC's to use for clustering
+ElbowPlot(BC, ndims = 75)
+
+ElbowPlot(BB, ndims = 75)
+
+```
+
+## Call Clusters
+
+```{r}
+#Adjust dimensions based on PC's in elbow plot; I chose 50 because it is where they level off at low standard deviation
+#Adjust resolution based on clustering. Optimal resolution typically increases for datasets with more cells because you are more likely to capture more types of cells
+##Usually need to look at the UMAP and decide if cluster numbers/splitting looks good or not. Stem will usually have more clusters than leaf
+BC <- FindNeighbors(BC, dims = 1:50)
+BC <- FindClusters(BC, resolution = 0.5) #resolution can be adjusted depending on how the cells cluster. Higher resolution will break the umap into more clusters
+BC <- RunUMAP(BC, dims = 1:50)
+
+BB <- FindNeighbors(BB, dims = 1:50)
+BB <- FindClusters(BB, resolution = 0.5)
+BB <- RunUMAP(BB, dims = 1:50)
+```
+
+## Make UMAP Plots
+
+```{r}
+UMAP1 <- DimPlot(BC, reduction = "umap", label = T, label.size = 5, repel = T, split.by = "Run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  ) +
+  ggtitle("Grouped by Replicates\n")
+UMAP1
+
+
+UMAP2 <- DimPlot(BB, reduction = "umap", label = T, label.size = 5, repel = T, split.by = "Run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  ) +
+  ggtitle("Grouped by Replicates\n")
+UMAP2
+#I usally dont save this UMAP since I'm usually integrating later anyway. They look like they clustered well, so I don't need to adjust the resolution from 0.5
+```
+
+## General Stats
+
+```{r}
+#Cells in each cluster: take note
+table(Idents(BC))
+# Cells in each replicate: take note
+table(BC$orig.ident)
+#How does cluster membership vary by replicate? #clusters
+table(Idents(BC), BC$orig.ident)
+
+#Cells in each cluster:
+table(Idents(BB))
+# Cells in each replicate: 
+table(BB$orig.ident)
+#How does cluster membership vary by replicate? 
+table(Idents(BB), BB$orig.ident)
+```
+
+## Save "dirty" RDS before doublet removal in case needed later
+
+```{r}
+saveRDS(BC, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_BC_predoublet.rds")
+
+saveRDS(BB, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_BB_predoublet.rds")
+
+#BC <-readRDS(file = "/scratch/ac05869/plob_sc/seurat_data/PLU_BC_predoublet.rds")
+#BB <-readRDS(file = "/scratch/ac05869/plob_sc/seurat_data/PLU_BB_predoublet.rds")
+```
+
+## Stat Check
+
+```{r}
+#Check various stats to determine if there is an outlier for any of the clusters
+#Are there any clusters which have more doublets than others?
+plot1 <- VlnPlot(BC, features = c("nFeature_RNA"), pt.size = 0.5) + ggtitle("PLU_BC - nFeature_RNA")
+plot2 <-VlnPlot(BC, features = c("nCount_RNA"), pt.size = 0.5) + ggtitle("PLU_BC - nCount_RNA")
+
+ggarrange(plot1, plot2, nrow = 2, ncol = 1, common.legend = TRUE, legend = "bottom")
+
+plot1
+plot2
+
+plot3 <- VlnPlot(BB, features = c("nFeature_RNA"), pt.size = 0.5) + ggtitle("PLU_BB - nFeature_RNA")
+plot4 <-VlnPlot(BB, features = c("nCount_RNA"), pt.size = 0.5) + ggtitle("PLU_BB - nCount_RNA")
+
+ggarrange(plot3, plot4, nrow = 2, ncol = 1, common.legend = TRUE, legend = "bottom")
+
+plot3
+plot4
+
+#Notes: BC and BB; nFeature is number of genes/cell, nCount is number of UMIs/cell
+#BC:  13 clusters
+#BB: 14 clusters
+```
+
+# Doublet Filtering
+## Run Doubletfinder
+```{r}
+library(DoubletFinder)
+#Code needs to be edited to work currently EVERY TIME in v4 but not v5
+#for V4, use "trace(paramSweep, edit = T)" and "trace(doubletFinder, edit = T)" - and edit $counts to @counts
+```
+
+
+#BB doubles
+```{r}
+#Seurat Objects Pre-Processed, PCA and UMAP run 
+
+## pK Identification (no ground-truth) ---------------------------------------------------------------------------------------
+sweep.res.list_ai <- paramSweep(BB, PCs = 1:50, sct = FALSE)
+sweep.stats_ai <- summarizeSweep(sweep.res.list_ai, GT = FALSE)
+bcmvn_ai <- find.pK(sweep.stats_ai)
+
+pK=as.numeric(as.character(bcmvn_ai$pK))
+BCmetric=bcmvn_ai$BCmetric
+pK_choose = pK[which(BCmetric %in% max(BCmetric))]
+
+## ggplot doesn't work
+showtext_auto(enable = TRUE)
+png(file = "/scratch/ac05869/plob_sc/seurat_qc/PLU_BB_doubletfinder_pK_identification.png")
+par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
+plot(x = pK, y = BCmetric, pch = 16,type="b",
+col = "blue",lty=1)
+abline(v=pK_choose,lwd=2,col='red',lty=2)
+title("The BCmvn distributions")
+text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
+dev.off()
+showtext_auto(enable = F)
+
+
+## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
+homotypic.prop <- modelHomotypic(BB@meta.data$seurat_clusters)           ## ex: annotations <- seu_kidney@meta.data$ClusteringResults
+nExp_poi <- round(0.07*nrow(BB@meta.data))  ## Assuming 7% doublet formation rate - updated based on 40k cells loaded for PIPseq ##This is something that should be changed based on assumed doublet levels!
+nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+```
+
+## BB doublet test
+```{r}
+## Run DoubletFinder with varying classification stringencies ----------------------------------------------------------------
+#Update pK to be pK choosen from Above steps!
+BB_doublet_test <-doubletFinder(BB, #change library ID
+                                PCs = 1:50, #Josh doesn't usually change this to match the number of PCs
+                                pN = 0.25, 
+                                pK = pK_choose, #the only number we change from earlier code (I use the variable itself)
+                                nExp = nExp_poi, #this variable is from previous code code chunk
+                                reuse.pANN = FALSE, sct = FALSE)
+
+BB_doublet_test
+
+value_BB <- paste0("DF.classifications_0.25_", pK_choose, "_", nExp_poi) #pK_choose is the variable or pK value chosen from above steps, the last value is the # doublets found
+value_BB
+
+sum(str_count(BB_doublet_test[[value_BB]], "Doublet")) #How many are doublets? 
+DimPlot(BB_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = value_BB)+theme(aspect.ratio = 1)
+#Save a UMAP of which cells were the doublets
+##Does this match your expectations from the Violin plots of the clusters we made earlier?
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_BB_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
+```
+#BC doubles
+```{r}
+#Seurat Objects Pre-Processed, PCA and UMAP run 
+
+## pK Identification (no ground-truth) ---------------------------------------------------------------------------------------
+sweep.res.list_ai <- paramSweep(BC, PCs = 1:50, sct = FALSE)
+sweep.stats_ai <- summarizeSweep(sweep.res.list_ai, GT = FALSE)
+bcmvn_ai <- find.pK(sweep.stats_ai)
+
+pK=as.numeric(as.character(bcmvn_ai$pK))
+BCmetric=bcmvn_ai$BCmetric
+pK_choose = pK[which(BCmetric %in% max(BCmetric))]
+
+## ggplot doesn't work
+showtext_auto(enable = TRUE)
+png(file = "/scratch/ac05869/plob_sc/seurat_qc/PLU_BC_doubletfinder_pK_identification.png")
+par(mar=c(5,4,4,8)+1,cex.main=1.2,font.main=2)
+plot(x = pK, y = BCmetric, pch = 16,type="b",
+col = "blue",lty=1)
+abline(v=pK_choose,lwd=2,col='red',lty=2)
+title("The BCmvn distributions")
+text(pK_choose,max(BCmetric),as.character(pK_choose),pos = 4,col = "red")
+dev.off()
+showtext_auto(enable = F)
+
+
+## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
+homotypic.prop <- modelHomotypic(BC@meta.data$seurat_clusters)           ## ex: annotations <- seu_kidney@meta.data$ClusteringResults
+nExp_poi <- round(0.07*nrow(BC@meta.data))  ## Assuming 7% doublet formation rate - updated based on 40k cells loaded for PIPseq ##This is something that should be changed based on assumed doublet levels!
+nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+```
+
+## BC doublet test
+```{r}
+## Run DoubletFinder with varying classification stringencies ----------------------------------------------------------------
+#Update pK to be pK choosen from Above steps!
+BC_doublet_test <-doubletFinder(BC, #change library ID
+                                PCs = 1:50, #Josh doesn't usually change this to match the number of PCs
+                                pN = 0.25, 
+                                pK = pK_choose, #the only number we change from earlier code (I use the variable itself)
+                                nExp = nExp_poi, #this variable is from previous code code chunk
+                                reuse.pANN = FALSE, sct = FALSE)
+
+BC_doublet_test
+
+value_BC <- paste0("DF.classifications_0.25_", pK_choose, "_", nExp_poi) #pK_choose is the variable or pK value chosen from above steps, the last value is the # doublets found
+value_BC
+
+sum(str_count(BC_doublet_test[[value_BC]], "Doublet")) #How many are doublets? 
+DimPlot(BC_doublet_test,pt.size = 1,label=TRUE, label.size = 5,reduction = "umap",group.by = value_BC)+theme(aspect.ratio = 1)
+#Save a UMAP of which cells were the doublets
+##Does this match your expectations from the Violin plots of the clusters we made earlier?
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_BC_doubletfinder_UMAP.png", height = 16, width = 16, bg = "white")
+```
+## Save RDS Object from Doublet Finder
+
+```{r}
+saveRDS(BC_doublet_test, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_BC_doublet_finder_seurat.rds")
+
+saveRDS(BB_doublet_test, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_BB_doublet_finder_seurat.rds")
+
+#Notes:
+
+#BC_doublet_test <- ("/scratch/ac05869/plob_sc/seurat_data/PLU_BC_doublet_finder_seurat.rds")
+#BB_doublet_test <- ("/scratch/ac05869/plob_sc/seurat_data/PLU_BB_doublet_finder_seurat.rds")
+
+```
+
+## Filter Doublets
+```{r}
+#BC
+value_BC
+BC_clean <- subset(BC_doublet_test, subset = DF.classifications_0.25_0.005_828 == "Singlet") #BC "DF.classifications_0.25_0.005_828"
+BC_clean # 
+
+#BB
+value_BB
+BB_clean <- subset(BB_doublet_test, subset = DF.classifications_0.25_0.3_935 == "Singlet") #BB "DF.classifications_0.25_0.3_935"
+BB_clean # 
+#take note of number of doublets that were filtered out. 
+```
+
+## Summary Statistics Cleaned Data: Number of Genes  
+```{r}
+summary(BC_clean$nFeature_RNA)
+summary(BC_clean$nCount_RNA)
+
+summary(BB_clean$nFeature_RNA)
+summary(BB_clean$nCount_RNA)
+```
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    482     726    1134    1556    1939    9931 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    521     812    1311    2064    2410   24655 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    483     753    1244    1717    2256    9329 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    573     868    1489    2406    2978   24958 
+# Re-Clustering Cleaned Data 
+> Notes
+
+Now that we have a clean dataset we need to re-cluster things to account for the removal of doublets 
+We can either re-run the above clustering steps for single samples OR we can integrate our replicates together at the same time
+
+
+## Normalize the Data
+```{r}
+#Default = LogNormalize
+BC_clean <- NormalizeData(BC_clean)
+BB_clean <- NormalizeData(BB_clean)
+
+## Save clean data - want to eventually integrate with leaf clean normalized data for integrated dataset
+
+saveRDS(BC_clean, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_BC_clean_normalized.rds")
+
+saveRDS(BB_clean, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_BB_clean_normalized.rds")
+
+#Notes:
+
+```
+
+
+# Integration via reciprocal PCA (RPCA)
+>Notes
+
+This method is what was suggested in Suerat v4 as of Oct 2023. In their new vignette for Seurat v5 the methodology looks to be updated. This may warrant investigation prior to running the below! I still recommend RPCA, see the linked vginette below for reasons why.
+
+https://satijalab.org/seurat/articles/integration_rpca
+We therefore,recommend RPCA during integrative analysis where: * A substantial fraction of cells in one dataset have no matching type in the other
+
+##Data Prep
+```{r}
+BC_clean$sample <- "Leaf"
+BB_clean$sample <- "Leaf"
+leaf.list <- list(BC_clean, BB_clean)
+
+# normalize and identify variable features for each dataset independently
+leaf.list <- lapply(X = leaf.list, FUN = function(x) {
+    x <- NormalizeData(x)
+    x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 3000)
+})
+
+# select features that are repeatedly variable across datasets for integration run PCA on each
+# dataset using these features
+features <- SelectIntegrationFeatures(object.list = leaf.list, nfeatures = 3000)
+leaf.list <- lapply(X = leaf.list, FUN = function(x) {
+    x <- ScaleData(x, features = features, verbose = FALSE)
+    x <- RunPCA(x, features = features, verbose = FALSE)
+})
+```
+
+## Integration 
+```{r}
+leaf.anchors <- FindIntegrationAnchors(object.list = leaf.list, anchor.features = features, reduction = "rpca")
+
+# this command creates an 'integrated' data assay
+leaf.combined <- IntegrateData(anchorset = leaf.anchors)
+
+# specify that we will perform downstream analysis on the corrected data note that the
+# original unmodified data still resides in the 'RNA' assay
+DefaultAssay(leaf.combined) <- "integrated"
+```
+
+## Stats
+```{r}
+leaf.combined
+
+summary(leaf.combined$nFeature_RNA)
+summary(leaf.combined$nCount_RNA)
+```
+An object of class Seurat 
+79566 features across 23423 samples within 2 assays 
+Active assay: integrated (3000 features, 3000 variable features)
+ 1 layer present: data
+ 1 other assay present: RNA
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    482     740    1187    1642    2095    9931 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    521     841    1399    2245    2677   24958 
+## Scale the Data
+```{r}
+leaf.combined.genes <- rownames(leaf.combined)
+leaf.combined <- ScaleData(leaf.combined, features = leaf.combined.genes)
+```
+
+## PCA
+```{r}
+leaf.combined$Run <- leaf.combined@meta.data$orig.ident
+leaf.combined <- RunPCA(leaf.combined, npcs = 75, features = VariableFeatures(object = leaf.combined), verbose = FALSE) # run PCA
+```
+
+```{r}
+ElbowPlot(leaf.combined, ndims = 75)
+```
+
+## Call Clusters
+```{r}
+leaf.combined <- FindNeighbors(leaf.combined, dims = 1:50) #adjust dims based on elbow plot above
+leaf.combined <- FindClusters(leaf.combined, resolution = 0.5) #adjustable resolution value. Check back and forth until it looks good
+leaf.combined <- RunUMAP(leaf.combined, dims = 1:50)
+```
+
+## Make UMAP Plots
+```{r}
+UMAP1 <- DimPlot(leaf.combined, reduction = "umap", repel = T, split.by = "Run") +
+  theme_void() +
+  theme(
+    text = element_text(size = 14, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  ) +
+  ggtitle("Grouped by Replicates\n")
+UMAP1
+#check to see that there are the same number of cluster in each rep
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_BB_BC_integrated_umap.png", height = 8, width = 12, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_BB_BC_integrated_umap.svg", height = 8, width = 12, bg = "white")
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_BB_BC_integrated_umap_small.png", height = 4, width = 10, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_BB_BC_integrated_umap_small.svg", height = 4, width = 10, bg = "white")
+```
+
+```{r}
+UMAP2 <- DimPlot(leaf.combined, reduction = "umap", label = T,
+                 label.size = 5, repel = T) +
+  theme_void() +
+  theme(
+    text = element_text(size = 18, color = "black", face = "bold"),
+    legend.position = "none",
+    title = element_text(size = 10)
+  )
+UMAP2
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_BB_BC_integrated_umap_all_together.png", height = 8, width = 12, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_BB_BC_integrated_umap_all_together.svg", height = 8, width = 12, bg = "white")
+
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_BB_BC_integrated_umap_all_together_small.png", height = 4, width = 6, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/seurat_qc/PLU_BB_BC_integrated_umap_all_together_small.svg", height = 4, width = 6, bg = "white")
+
+```
+
+## Stats - Integrated Clusters
+```{r}
+#Cells in each cluster
+table(Idents(leaf.combined))
+
+# Cells in each replicate
+table(leaf.combined$orig.ident)
+
+#How does cluster membership vary by replicate?
+table(Idents(leaf.combined), leaf.combined$orig.ident)
+```
+
+# Save cleaned integrated RDS Object
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+leaf.combined = JoinLayers(leaf.combined)
+
+
+#due to the error messages, I ran this and the FindAllMarkers worked. Before doing this, this chunk generated error messages when I ran it: "Warning: No DE genes identifiedWarning: The following tests were not performed: Warning: When testing 0 versus all: data layers are not joined. Please run JoinLayers"
+saveRDS(leaf.combined, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_leaf_cleaned_integrated.rds")
+leaf.combined <- readRDS("/scratch/ac05869/plob_sc/seurat_data/PLU_leaf_cleaned_integrated.rds")
+```
+
+# Create Matrices
+##Annotation data - both nuclear mitochondrial and chloroplast
+```{r}
+#repr_gene_models <- read_delim("/scratch/ac05869/plob_sc/STAR_index/plob_v4.repr_working.mit.chloro.agat.gtf",
+#                               delim = "\t", col_names = F)
+#anno <- read_delim("/scratch/ac05869/plu_comparative_final/genomes/plob_v4/plob_v4.functional_annotation.txt", col_names = c("gene_ID", "gene_anno"))
+
+#repr_models <- repr_gene_models %>% 
+#  dplyr::filter(X3 == "gene") %>% 
+#  dplyr::select(X1, X4, X5, X7, X9) %>% 
+#  dplyr::rename(
+#    Chr = X1,
+#    start = X4,
+#    end = X5,
+#    strand = X7
+#  ) %>%
+#  separate(X9, c("temp1", "ID", "gene_ID"), sep = ";") %>%
+#  mutate(across(everything(), ~ str_trim(str_replace_all(.x, '"', ''))))%>%
+#  separate(gene_ID, c("temp", "gene_ID"), sep = " ") %>%
+#  dplyr::select(c(Chr, start, end, strand, gene_ID, ID)) %>%
+#  left_join(anno, by = "gene_ID") %>%
+#  select(-gene_ID)%>%
+#  separate(ID, c("temp", "gene_ID"), sep = " ")%>%
+#  select(-temp)
+
+#head(repr_models)
+#dim(repr_models) #130042
+
+#write_delim(repr_models, "/scratch/ac05869/plob_sc/seurat_data/repr_gene_models.csv", delim = ",")
+repr_models <- read_delim("/scratch/ac05869/plob_sc/seurat_data/repr_gene_models.csv", delim = ",")
+head(repr_models)
+dim(repr_models) #130042
+```
+# plot pathway genes
+```{r}
+#Need to create a file that has your marker genes and some metadata (cell types, etc.). Change all underscores to either dashes or periods
+path <- read_delim("/scratch/ac05869/plu_comparative_final/pathway/plumeria_iridoid_pathway_synthelogs.txt", delim = "\t")
+head(path)
+path <- path %>%
+  separate_rows(P.obtusa_A, P.obtusa_B, sep = ",") %>%
+  mutate(P.obtusa_A = trimws(P.obtusa_A))%>%
+  mutate(P.obtusa_B = trimws(P.obtusa_B)) %>%
+  filter(
+    !is.na(P.obtusa_A), P.obtusa_A != "",
+    !is.na(P.obtusa_B), P.obtusa_B != ""
+  )
+
+pathA <- path %>%
+  mutate(gene_ID = P.obtusa_A)%>%
+  select(-c(P.obtusa_A, P.obtusa_B)) %>%
+  distinct()
+pathB <- path %>%
+  mutate(gene_ID = P.obtusa_B)%>%
+  select(-c(P.obtusa_A, P.obtusa_B))%>%
+  distinct()
+
+path <- rbind(pathA, pathB) %>%
+  mutate(subgenome = case_when(
+    str_detect(gene_ID, "aG") ~ "A",
+    str_detect(gene_ID, "bG") ~"B")
+  ) %>%
+  arrange(order, subgenome)
+
+path$gene_ID <- gsub("\\.\\d+$", "", path$gene_ID)
+
+rev_path <- path[order(nrow(path):1),]
+head(rev_path)
+
+write_delim(path, "/work/crblab/ac05869/plob_v4_single_cell/pathway_analysis/plumeria_MEP_iridoid_syntelogs.tsv", delim = "\t")
+```
+
+
+```{r}
+path <- read_delim("/work/crblab/ac05869/plob_v4_single_cell/pathway_analysis/plumeria_MEP_iridoid_syntelogs.tsv", delim = "\t")
+rev_path <- path[order(nrow(path):1),]
+```
+
+## Find Markers 
+
+> Notes
+
+seurat told me to install presto package for "faster implementation of the Wilcoxon Rank Sum Test (default method for FindMarkers)"
+devtools::install_github('immunogenomics/presto')
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+
+leaf.combined.markers <- FindAllMarkers(leaf.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) 
+#min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+head(leaf.combined.markers)
+
+leaf.combined.markers_annotated <- leaf.combined.markers %>%
+  left_join(repr_models, by = c("gene" = "gene_ID"), relationship = "many-to-many") %>% 
+  left_join(path %>% select(gene_ID, tag, order), by = c("gene" = "gene_ID")) %>%
+  group_by(cluster)
+
+head(leaf.combined.markers_annotated)
+
+write.table(leaf.combined.markers, "/scratch/ac05869/plob_sc/seurat_data/PLU_leaf_markers_minpct0.25_minlfc0.25.txt", quote = FALSE, sep = "\t", row.names = FALSE)
+write_delim(leaf.combined.markers_annotated, "/scratch/ac05869/plob_sc/seurat_data/PLU_leaf_markers_annotated_minpct0.25_minlfc0.25.tsv", delim = "\t")
+leaf.combined.markers_annotated <- read_delim("/scratch/ac05869/plob_sc/seurat_data/PLU_leaf_markers_annotated_minpct0.25_minlfc0.25.tsv", delim = "\t")
+```
+
+## Find Average Expression
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(leaf.combined)
+Idents(leaf.combined) <- gsub(pattern = " ", replacement = "_", x = Idents(leaf.combined))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(leaf.combined) <- orig.levels
+cluster.averages <- AverageExpression(leaf.combined, return.seurat = TRUE)
+
+# How can I extract expression matrix for all Cluster 0 cells (perhaps, to load into another package)
+cluster_avg.data <- as.matrix(GetAssayData(cluster.averages, layer = "data")[, ])
+#Warning: The `slot` argument of `GetAssayData()` is deprecated as of SeuratObject 5.0.0.
+#Please use the `layer` argument instead.
+
+write.table(cluster_avg.data, file = "/scratch/ac05869/plob_sc/seurat_data/PLU_leaf_cluster_av.norm.counts.txt", sep = "\t", quote = FALSE)
+head(cluster_avg.data)
+```
+# QC Data via Marker Gene Expression Check 
+
+```{r}
+DefaultAssay(leaf.combined) <- "RNA"
+rev_pathway_genes <- rev_path
+dotplot_data <- DotPlot(leaf.combined, features = unique(rev_pathway_genes$gene_ID))$data
+
+dotplot_data %>% 
+  inner_join(rev_pathway_genes %>% 
+               distinct(gene_ID, .keep_all = T), by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    LocusID = reorder(LocusID, -order),
+    ylab = paste0(tag, ":", LocusID),  # make this new variable
+    ylab = reorder(ylab, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Cluster",
+       title = "P.obtusa syntelogs - Leaf") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+#ggsave("/scratch/ac05869/plob_sc/pathway_analysis/PLU_leaf_pathway_expression_251110_1.png", height = 10, width = 8)
+#ggsave("/scratch/ac05869/plob_sc/pathway_analysis/PLU_leaf_pathway_expression_251110_1.svg", height = 10, width = 8)
+
+```
+#Cell type annotations
+Read in genespace run to find syntelogs of markers in Plumeria
+```{r}
+load(file = "/scratch/ac05869/plu_comparative_final/Genespace/Apocynaceae_with_outgroup/wd/results/pangenes_athaliana_ref.rda")
+
+all_syntelogs <- pangenes %>%
+  mutate(
+    across(where(is.list),~ map_chr(.x, ~ paste(.x, collapse = ",")))) %>%
+  separate_rows(A.thaliana, sep = ",") %>%
+  mutate(A.thaliana = trimws(A.thaliana)) 
+
+all_syntelogs$A.thaliana <- gsub("\\.\\d+$", "", all_syntelogs$A.thaliana)
+all_syntelogs$C.roseus <- gsub("\\.\\d+$", "", all_syntelogs$C.roseus)
+
+write_delim(all_syntelogs, file = "/scratch/ac05869/plob_sc/pathway_analysis/markers/Athaliana_syntelogs_pangenes.tsv", delim = "\t")
+
+TAIR <- read_delim(file = "/scratch/ac05869/plob_sc/pathway_analysis/markers/TAIR10_functional_descriptions.txt", delim = "\t")
+
+annotated_syntelogs <- all_syntelogs %>%
+  left_join(TAIR %>% select(-Type), by = c("repGene"= "Model_name"))
+View(annotated_syntelogs)
+write_delim(annotated_syntelogs, file = "/scratch/ac05869/plob_sc/pathway_analysis/markers/Athaliana_syntelogs_pangenes_annotated.tsv", delim = "\t")
+
+```
+#Read in marker genes 
+```{r}
+#/scratch/ac05869/plob_sc/pathway_analysis/markers
+pop_epi <- read_delim("/work/crblab/ac05869/plob_v4_single_cell/cluster_anno/EPDIERMIS_POP_shoot_epi_clean_anno_20251104.tsv", delim = "\t")
+head(pop_epi)
+markers <- read_delim("/scratch/ac05869/plob_sc/pathway_analysis/markers/Dec2025_compiled_stem_leaf_markers_annotated.tsv", delim = "\t")
+head(markers)
+colnames(markers)
+
+markers2 <- markers %>% select(-DOI1, -DOI2, -DOI3, -DOI4, -Type, -Computational_description) %>%
+  rename(c(gene_ID =Arabidopsis, cell_type = Cell_type))
+colnames(markers2)
+
+pop_epi2 <- pop_epi %>% select(Arabidopsis, gene_name, Best.Arabidopsis.BLAST.hit, cell_type ) %>%
+  rename(c(gene_ID=Arabidopsis, Name = gene_name)) %>%
+  left_join(TAIR %>% select(-Type), by = c("gene_ID"= "Model_name")) %>%
+  select(c(-Best.Arabidopsis.BLAST.hit, -Computational_description))
+pop_epi2$gene_ID <- gsub("\\.\\d+$", "", pop_epi2$gene_ID)
+pop_epi2$Sources <- "Poplar markers"
+pop_epi2$Organ <- "Leaf"
+colnames(pop_epi2)
+head(pop_epi2)
+
+markers_comb <- markers2 %>%
+  filter(!gene_ID %in% pop_epi2$gene_ID)%>%
+  bind_rows(pop_epi2)
+```
+
+## Markers to syntelogs
+```{r}
+colnames(all_syntelogs)
+syntenic_markers.1 <- all_syntelogs %>%
+  filter(A.thaliana %in%  markers_comb$gene_ID)%>%
+  rename(Marker_ID = A.thaliana) %>%
+  filter(
+    !is.na(P.obtusa_A), P.obtusa_A != "",
+    !is.na(P.obtusa_B), P.obtusa_B != ""
+  )%>%
+  separate_rows(P.obtusa_A, sep = ",") %>%
+  mutate(P.obtusa_A = trimws(P.obtusa_A))%>%
+  separate_rows(P.obtusa_B, sep = ",") %>%
+  mutate(P.obtusa_B = trimws(P.obtusa_B)) %>%
+  select(-start, -end, -pgID, -interpChr, -interpOrd, -og, -repGene, -genome, -chr, -P.rubra_A, -P.rubra_B, -H.carnosa, -A.pictum, -C.roseus)
+
+
+syntenic_markers.2 <- all_syntelogs %>%
+  filter(C.roseus %in%  markers_comb$gene_ID)%>%
+  rename(Marker_ID = C.roseus) %>%
+  filter(
+    !is.na(P.obtusa_A), P.obtusa_A != "",
+    !is.na(P.obtusa_B), P.obtusa_B != ""
+  )%>%
+  separate_rows(P.obtusa_A, sep = ",") %>%
+  mutate(P.obtusa_A = trimws(P.obtusa_A))%>%
+  separate_rows(P.obtusa_B, sep = ",") %>%
+  mutate(P.obtusa_B = trimws(P.obtusa_B)) %>%
+  select(-start, -end, -pgID, -interpChr, -interpOrd, -og, -repGene, -genome, -chr, -P.rubra_A, -P.rubra_B, -H.carnosa, -A.pictum, -A.thaliana)
+
+syntenic_markers <- rbind(syntenic_markers.1, syntenic_markers.2)
+
+A_markers <- syntenic_markers %>%
+  select(-P.obtusa_B) %>%
+  mutate(gene_ID = P.obtusa_A) %>%
+  select( -P.obtusa_A) %>%
+  left_join(markers_comb, by = c("Marker_ID" ="gene_ID")) %>%
+  distinct()
+
+B_markers <- syntenic_markers %>%
+  select(-P.obtusa_A)%>%
+  mutate(gene_ID = P.obtusa_B)%>%
+  select( -P.obtusa_B) %>%
+  left_join(markers_comb, by = c("Marker_ID" ="gene_ID")) %>%
+  distinct()
+
+markers3 <- rbind(A_markers, B_markers) %>%
+  group_by(gene_ID) %>%
+  slice(1) %>%
+  ungroup()%>%
+  mutate(cell_type2 = case_when(
+    str_detect(cell_type, "Abaxial epidermal") ~ "Abaxial epidermis",
+        str_detect(cell_type, "Abaxial Epidermis") ~ "Abaxial epidermis",
+    str_detect(cell_type, "abaxial") ~ "Abaxial epidermis",
+    str_detect(cell_type, "Companion cells") ~ "Companion cell",
+    T ~ cell_type
+  ))%>%
+  mutate(cell_type2 = case_when(
+    str_detect(cell_type, "epidermis") ~ "Epidermis",
+        str_detect(cell_type, "Epidermis") ~ "Epidermis",
+        str_detect(cell_type, "XP") ~ "Xylem",
+    str_detect(cell_type, "PP") ~ "Phloem",
+        str_detect(cell_type, "Bundle") ~ "Vasculature",
+        str_detect(cell_type, "Xylem") ~ "Xylem",
+            str_detect(cell_type, "xylem") ~ "Xylem",
+                str_detect(cell_type, "endodermis") ~ "Endodermis",
+            str_detect(cell_type, "Adaxial Epidermis") ~ "Adaxial Epidermis",
+    str_detect(cell_type, "adaxial") ~ "Adaxial Epidermis",
+        str_detect(cell_type, "Sieve") ~ "Vasculature",
+            str_detect(cell_type, "Mesophyll") ~ "Mesophyll",
+            str_detect(cell_type, "Cortex") ~ "Cortex",
+            str_detect(cell_type, "mesophyll") ~ "Mesophyll",
+            str_detect(cell_type, "Vessel") ~ "Vasculature",
+    T ~ cell_type
+  ))%>%
+  mutate(subgenome = case_when(
+    str_detect(gene_ID, "aG") ~ "A",
+    str_detect(gene_ID, "bG") ~"B")) %>%
+  arrange(cell_type2, Name)%>%
+#  filter(!(cell_type2 == "Epidermis" & is.na(Short_description) & Sources == "Lee et al 2025")) %>%
+  distinct()
+    
+markers3$gene_ID <- gsub("\\.\\d+$", "", markers3$gene_ID) 
+dim(markers3)#2309
+
+write_tsv(markers3, file = '/scratch/ac05869/plob_sc/pathway_analysis/markers/March2026_compiled_stem_leaf_markers_annotated_plumeria_syntelogs.tsv')
+#markers3 <- read_delim(file = '/scratch/ac05869/plob_sc/pathway_analysis/markers/Dec2025_compiled_stem_leaf_markers_annotated_plumeria_syntelogs.tsv')
+```
+
+```{r}
+poplar_in_plu <- markers3 %>%
+  filter(Sources == "Poplar markers")
+```
+
+#Seurat cluster markers with markers
+```{r}
+leaf.combined.markers_annotated <- read_delim("/scratch/ac05869/plob_sc/seurat_data/PLU_leaf_markers_annotated_minpct0.25_minlfc0.25.tsv", delim = "\t")
+
+leaf_clust_anno <- leaf.combined.markers_annotated %>%
+  select(-Chr, -start, -end, -strand, -tag, -order)%>%
+  inner_join(markers3 , by = c('gene' = 'gene_ID')) %>%
+  rename('gene_ID' = 'gene')
+
+leaf_clust_anno_pop <- leaf.combined.markers_annotated %>%
+  select(-Chr, -start, -end, -strand, -tag, -order)%>%
+  inner_join(poplar_in_plu , by = c('gene' = 'gene_ID')) %>%
+  rename('gene_ID' = 'gene')
+
+write_delim(leaf_clust_anno, file = '/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/Plumeria_leaf_cluster_markers_annotated.tsv', delim = '\t')
+write_delim(leaf_clust_anno_pop, file = '/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/Plumeria_leaf_cluster_markers_annotated_poplar.tsv', delim = '\t')
+
+```
+
+Annotated the clusters based on known markers and de novo markers from clustering, and pathway gene expression of MEP pathway (7DLH and G8H for IPAP cells)
+
+
+```{r}
+expressed_markers <- markers3 %>% filter(gene_ID %in% Features(leaf.combined))
+dim(expressed_markers)#2363
+dotplot <- DotPlot(leaf.combined, features = unique(expressed_markers$gene_ID))$data
+dotplot
+```
+
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(leaf_clust_anno %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Leaf Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/seurat_marker_expression_20Mar26.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/seurat_marker_expression_20Mar26.png", height = 24, width = 10)
+
+```
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+    filter(!str_detect(Sources, "Lee et al 2025")) %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Leaf Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/marker_cells_dotplot_no_Lee_20Mar26.svg", height = 20, width = 14)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/marker_cells_dotplot_no_Lee_20Mar26.png", height = 20, width = 14)
+
+```
+```{r}
+celltypes <- dotplot %>% 
+inner_join(markers3 %>%
+    filter(str_detect(Sources, "Lee et al 2025")) %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Leaf Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/marker_cells_dotplot_only_Lee_20Mar26.svg", height = 50, width = 14, limitsize = FALSE)
+```
+```{r}
+library(patchwork)
+
+# Create the base data first
+celltypes_data <- dotplot %>% 
+  inner_join(markers3 %>%
+    filter(str_detect(Sources, "Lee et al 2025")) %>%
+    mutate(order = as.numeric(as.factor(cell_type2))),
+    by = c("features.plot" = "gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),
+    ylab2 = paste0(cell_type, ':', Name, "-", features.plot),
+    ylab2 = reorder(ylab2, -order)
+  )
+
+all_genes <- levels(celltypes_data$ylab2)
+n <- length(all_genes)
+
+e1_genes <- all_genes[1:floor(n/8)]
+e2_genes <- all_genes[(floor(n/8)+1):floor(2*n/8)]
+e3_genes <- all_genes[(floor(2*n/8)+1):floor(3*n/8)]
+e4_genes <- all_genes[(floor(3*n/8)+1):floor(4*n/8)]
+e5_genes <- all_genes[(floor(4*n/8)+1):floor(5*n/8)]
+e6_genes <- all_genes[(floor(5*n/8)+1):floor(6*n/8)]
+e7_genes <- all_genes[(floor(6*n/8)+1):floor(7*n/8)]
+e8_genes <- all_genes[(floor(7*n/8)+1):n]
+
+p1 <- make_panel(celltypes_data, e1_genes, show_legend = FALSE)
+p2 <- make_panel(celltypes_data, e2_genes, show_legend = FALSE)
+p3 <- make_panel(celltypes_data, e3_genes, show_legend = FALSE)
+p4 <- make_panel(celltypes_data, e4_genes, show_legend = FALSE)
+p5 <- make_panel(celltypes_data, e5_genes, show_legend = FALSE)
+p6 <- make_panel(celltypes_data, e6_genes, show_legend = FALSE)
+p7 <- make_panel(celltypes_data, e7_genes, show_legend = FALSE)
+p8 <- make_panel(celltypes_data, e8_genes, show_legend = FALSE)
+
+# 2x2 layout
+final_plot1 <- p1 + p2
+final_plot2 <- p3+p4
+final_plot3<- p5+p5
+final_plot4<- p7+p8
+
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/marker_cells_dotplot_only_Lee_20Mar26_1.png",
+       final_plot1, height = 30, width = 28, limitsize = FALSE)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/marker_cells_dotplot_only_Lee_20Mar26_2.png",
+       final_plot2, height = 30, width = 28, limitsize = FALSE)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/marker_cells_dotplot_only_Lee_20Mar26_3.png",
+       final_plot3, height = 30, width = 28, limitsize = FALSE)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/marker_cells_dotplot_only_Lee_20Mar26_4.png",
+       final_plot4, height = 30, width = 28, limitsize = FALSE)
+```
+#Plot curated markers to annotate clusters
+```{r}
+leaf_markers <- read_delim(file = "/work/crblab/ac05869/plob_v4_single_cell/cluster_anno/plumeria_leaf_marker_list.tsv", delim = "\t")
+dotplot <- DotPlot(leaf.combined, features = unique(leaf_markers$gene_ID))$data
+dotplot
+celltypes <- dotplot %>% 
+  inner_join(leaf_markers %>%
+               mutate(order = as.numeric(as.factor(cell_type))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", Name),  # make this new variable
+    ylab2 = paste0(cell_type2,':', Name, "-", features.plot),  # make this new variable
+    ylab3 = reorder(ylab, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab3)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Leaf Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/Selected_markers_23March26.png", height = 10, width = 12)
+```
+
+Annotate clusters
+#Reorder the columns by cell types
+```{r}
+Marker_dotplot <- DotPlot(leaf.combined, 
+                          features = unique(leaf_markers$gene_ID))
+unique(leaf_markers$Assigned_cell_type)
+
+Marker_dotplot_nice_df <- Marker_dotplot$data %>% 
+  mutate(gene_ID = row.names(.)) %>% 
+  full_join(leaf_markers %>% 
+              distinct(gene_ID, .keep_all = T),
+             by = join_by(features.plot == gene_ID)) %>% 
+    mutate(gene_ID = str_sub(gene_ID, end = -8)) %>% 
+  mutate(cell_type3 = factor(Assigned_cell_type, levels = c(
+    "Mesophyll", "Epidermis", "Protodermal", "Proliferating", "Vessels", "Sieve", "Guard cell", "IPAP"
+  ))) %>% 
+  mutate(cell_type4 = as.numeric(cell_type3)) %>% 
+  mutate(gene_ID = reorder(gene_ID, -cell_type4))  %>% 
+  mutate(LocusID = str_remove(
+               str_sub(features.plot, end = -8),
+               "^Pluob\\.v4\\."),
+    ylab = paste0(features.plot),
+    ylab2 = paste0(cell_type2,': ', Name),  # make this new variable
+    ylab2 = reorder(ylab2, -cell_type4)) %>%
+  mutate(id = factor(id, levels = c(
+    "0", "2", "6", "8", "11", #Mesophyll
+    "9","13", #Epidermis
+    "4","12", #Protodermal
+    "5", "7", "10", #Proliferating
+    "1", "14", #Vessels
+    "3", #Vasculature Sieve
+    "15", #Guard cells
+    "16" #IPAP
+  ))) %>% 
+  dplyr::filter(is.na(avg.exp.scaled) == F)
+
+
+```
+
+0	Mesophyll
+1	Vessels
+2	Mesophyll
+3	Sieve
+4	Protodermal
+5	Proliferating
+6	Mesophyll
+7	Proliferating
+8	Mesophyll
+9	Epidermis
+10	Proliferating
+11	Mesophyll
+12	Protodermal
+13	Epidermis
+14	Vessels
+15	Guard cell
+16	IPAP
+
+```{r}
+Marker_dot <- Marker_dotplot_nice_df %>% ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(y = "",
+       x = "Leaf Clusters",
+       fill = "Avg. Exp.",
+       size = "% Exp.") +
+  scale_y_discrete(labels = setNames(Marker_dotplot_nice_df$ylab2, Marker_dotplot_nice_df$Marker_ID)) + #replace the actual y axis with a new label
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+```
+
+##reorder clusters according to hypothesized cell-types
+    "0", "2", "6", "8", "11", #Mesophyll
+    "9","13", #Epidermis
+    "4","12", #Protodermal
+    "5", "7", "10", #Proliferating
+    "1", "14", #Vessels
+    "3", #Vasculature Sieve
+    "15", #Guard cells
+    "16" #IPAP
+```{r}
+leaf_cell_type_assignment <- data.frame(
+  cluster = c(0:16)
+) %>% 
+  mutate(cell_type = case_when(
+    cluster == 0 | 
+      cluster == 2 | 
+      cluster == 6 |
+      cluster == 8 |
+      cluster == 11 ~ "Mesophyll",
+    cluster == 1 |
+      cluster == 14 ~ "Vessels",
+    cluster == 3 ~ "Sieve",
+    cluster == 4 |
+      cluster == 12 ~ "Protodermal",
+      cluster == 9 |
+      cluster == 13  ~ "Epidermis",
+      cluster == 5 |  
+      cluster == 7 |
+      cluster == 10 ~ "Proliferating",
+    cluster == 15  ~ "Guard cell",
+    cluster == 16 ~ "IPAP",
+    T ~ "Unassigned"
+  )) %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+    "Mesophyll", "Epidermis", "Protodermal", "Proliferating", "Vessels", "Sieve", "Guard cell", "IPAP"
+  ))) %>% 
+  mutate(cluster = factor(cluster, levels = c(
+    "0", "2", "6", "8", "11", #Mesophyll
+    "9","13", #Epidermis
+    "4","12", #Protodermal
+    "5", "7", "10", #Proliferating
+    "1", "14", #Vessels
+    "3", #Vasculature Sieves
+    "15", #Guard cells
+    "16" #IPAP
+  )))
+
+Leaf_cell_type_strip <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "" )) +
+  geom_tile(aes(fill = cell_type)) +
+  scale_fill_manual(values = c(brewer.pal(8, "Paired"), "grey80")) +
+  guides(fill = guide_legend(nrow = 2)) +
+  labs(fill = "Cell type") +
+  theme_void() +
+  theme(
+    legend.position = "bottom" ,
+    text = element_text(size = 14)
+  )
+
+Leaf_cell_type_strip
+ggsave(file = "/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/leaf_cell_strip.svg", height = 1, width = 12)
+```
+
+
+```{r}
+Leaf_cell_type_mkr_text <- Marker_dotplot_nice_df %>% 
+  dplyr::filter(id == 0) %>% 
+  ggplot(aes(x = "", y = ylab2)) +
+  geom_text(aes(label = Marker_ID), fontface = "italic") +
+  theme_void()
+Leaf_cell_type_mkr_text
+
+blank <- data.frame(
+  x = 0,
+  y = 0
+) %>% 
+  ggplot(aes(x, y)) +
+  theme_void()
+
+Marker_dot_strip <- wrap_plots(Marker_dot, Leaf_cell_type_mkr_text,
+          Leaf_cell_type_strip, blank,
+          heights = c(1, 0.03), 
+          widths = c(1, 0.2), nrow = 2, ncol = 2)
+
+Marker_dot_strip
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/plumeria_leaf_cluster_assignment_23March26.png", height = 10, width = 12)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/plumeria_leaf_cluster_assignment_23March26.svg", height = 10, width = 12)
+```
+
+# UMAP with cell type info
+```{r}
+leaf.combined <- readRDS("/scratch/ac05869/plob_sc/seurat_data/PLU_leaf_cleaned_integrated.rds")
+
+leaf.combined@meta.data <- leaf.combined@meta.data %>% 
+  mutate(cell_type = case_when(
+    seurat_clusters == 0 | 
+      seurat_clusters == 2 | 
+      seurat_clusters == 6 |
+      seurat_clusters == 8 |
+      seurat_clusters == 11 ~ "Mesophyll",
+    seurat_clusters == 1 |
+      seurat_clusters == 14 ~ "Vessels",
+    seurat_clusters == 3 ~ "Sieve",
+    seurat_clusters == 4 |
+      seurat_clusters == 12 ~ "Protodermal",
+      seurat_clusters == 9 |
+      seurat_clusters == 13  ~ "Epidermis",
+      seurat_clusters == 5 |  
+      seurat_clusters == 7 |
+      seurat_clusters == 10 ~ "Proliferating",
+    seurat_clusters == 15  ~ "Guard cell",
+    seurat_clusters == 16 ~ "IPAP",
+    T ~ "Unassigned"
+  ))%>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c( "Mesophyll", "Epidermis", "Protodermal", "Proliferating", "Vessels", "Sieve", "Guard cell", "IPAP"
+                            )))
+
+DimPlot(leaf.combined, reduction = "umap", label = T,
+        group.by = "cell_type", label.size = 5, repel = T, #alpha = 0.8
+        ) +
+  theme_void() +
+  scale_color_manual(values = c(brewer.pal(8, "Paired"), "grey80")) +
+  labs(title = "") +
+  theme(
+    text = element_text(size = 14, color = "black"),
+    legend.position = "none")
+
+c(brewer.pal(8, "Paired"), "grey80")
+
+UMAP3 <- DimPlot(leaf.combined, reduction = "umap", label = T, label.size = 5, repel = T, alpha = 0.8
+        ) +
+  theme_void() +
+#  scale_color_manual(values = c(brewer.pal(8, "Paired"), "grey80")) +
+  labs(title = "") +
+  theme(
+    text = element_text(size = 18, color = "black"),
+    legend.position = "none") +
+  scale_color_manual(values = c("0" = "#A6CEE3",
+                                "2" = "#A6CEE3",
+                                "6" = "#A6CEE3",
+                                "8" = "#A6CEE3",
+                                "11" = "#A6CEE3",
+                                "9" = "#1F78B4",
+                                "13" = "#1F78B4",
+                                "4" = "#B2DF8A",
+                                "12" = "#B2DF8A",
+                                "5" = "#33A02C",
+                                "7" = "#33A02C",
+                                "10" = "#33A02C",
+                                "1" = "#FB9A99",
+                                "14" = "#FB9A99",
+                                "3" = "#E31A1C",
+                                "15" = "#FDBF6F",
+                                "16" = "#FF7F00"
+  ))
+
+UMAP3
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/UMAP_cell_types_23March26.svg", height = 4, width = 6, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/UMAP_cell_types_23March26.png", height = 4, width = 6, bg = "white")
+```
+
+```{r}
+leaf_assignment_graph <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "")) +
+  facet_wrap(~ cell_type, scales = "free", ncol = 2) +
+  geom_point(size = 5, aes(color = cell_type)) +
+  geom_text(aes(label = cluster)) +
+  labs(x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  scale_color_manual(values = c(brewer.pal(8, "Paired"))) +
+  theme(
+    legend.position = "none",
+    panel.grid = element_blank(),
+    text = element_text(size = 14, color = "black"),
+    axis.text.x = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA)
+    )
+
+leaf_assignment_graph
+
+RNA_umap <- wrap_plots(UMAP3 +
+                         labs(tag = ""), leaf_assignment_graph, 
+           nrow = 1, ncol = 2, widths = c(1, 0.7) , heights = c(1))
+
+RNA_umap
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/UMAP_cell_types_legend_23March26.svg", height = 5, width = 8, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/UMAP_cell_types_legend_23March26.png", height = 5, width = 8, bg = "white")
+```
+
+#stats by cell type
+```{r}
+stats <- leaf.combined@meta.data %>% 
+  group_by(cell_type) %>% 
+  dplyr::count() %>% 
+  mutate(total = nrow(leaf.combined@meta.data)) %>% 
+  mutate(percentage = n/total) %>% 
+  ungroup()
+stats
+
+write.csv(stats, "/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/cell_type_proportions_table_23March26.csv", row.names = FALSE)
+```
+
+
+```{r}
+RNA_by_rep <- leaf.combined@meta.data %>% 
+  group_by(cell_type, Run) %>% 
+  dplyr::count() %>% 
+  inner_join(
+    leaf.combined@meta.data %>% 
+  group_by(Run) %>% 
+  dplyr::count() %>% 
+  ungroup() %>% 
+  dplyr::rename(total = n), 
+  by = "Run"
+  ) %>% 
+  mutate(percentage = n/total * 100) %>% 
+  ungroup() %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c("Mesophyll", "Epidermis", "Protodermal", "Proliferating", "Vessels", "Sieve", "Guard cell", "IPAP"
+                            ))) %>% 
+  mutate(cell_type = fct_rev(cell_type)) %>% 
+  mutate(Run = case_when(
+    Run == "PLU_BB" ~ "Rep1",
+    Run == "PLU_BC" ~ "Rep2"
+  ))#
+write.csv(RNA_by_rep, "/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/cell_type_proportions_reps_table_23March26.csv", row.names = FALSE)
+
+RNA_by_rep %>% 
+  ggplot(aes(x = Run, y = percentage)) +
+  geom_bar(stat = "identity", aes(fill = cell_type)) +
+  scale_fill_manual(values = rev(c(brewer.pal(8, "Paired")))) +
+  labs(x = "", 
+       y = "% cells",
+       fill = "cell type") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  theme(axis.text.y = element_text(angle = 0, hjust = 1, color = "black"))
+
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/cell_type_proportions_23March26.svg", height = 6, width = 3, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/cell_type_proportions_23March26.png", height = 6, width = 3, bg = "white")
+```
+
+# Plot Pathway genes
+```{r}
+dotplot_data <- DotPlot(leaf.combined, features = unique(rev_path$gene_ID))$data
+
+p1_nice_df<- dotplot_data %>% 
+  inner_join(rev_path %>% 
+               distinct(gene_ID, .keep_all = T), by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    LocusID = reorder(LocusID, -order),
+    ylab = paste0(features.plot),  #for plot y axis
+    ylab2 = paste0(tag, ": ", LocusID),  # make this new variable
+    ylab = reorder(ylab, -order),
+    ylab = as.factor(ylab),
+    subgenome = paste("Subgenome", subgenome)
+) #
+p1 <- p1_nice_df %>%
+  ggplot(aes(x = id, y = ylab)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "",
+#      title = "Plumeria sp. leaf syntelogs",
+#       subtitle = "MEP and Iridoid genes"
+      ) +
+#  facet_wrap(~subgenome) +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.height = unit(0.7, "lines"),
+        legend.position = "top",
+        legend.box = "horizontal")
+p1
+```
+
+```{r}
+p1_text <- p1_nice_df %>% 
+  dplyr::filter(id == 0) %>% 
+  ggplot(aes(x = "", y = ylab)) +
+  geom_text(aes(label = tag), fontface = "italic") +
+  theme_void()
+p1_text
+
+blank <- data.frame(
+  x = 0,
+  y = 0
+) %>% 
+  ggplot(aes(x, y)) +
+  theme_void()
+
+p1_annotated <- wrap_plots(p1, p1_text,
+          Leaf_cell_type_strip, blank,
+          heights = c(1, 0.03), 
+          widths = c(1, 0.2), nrow = 2, ncol = 2)
+p1_annotated
+
+
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/plumeria_leaf_pathway_23March26.png", height = 10, width = 12)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/plumeria_leaf_pathway_23March26.svg", height = 10, width = 12)
+```
+
+##Expression by subgenome
+```{r}
+label_map <- p1_nice_df %>%
+  distinct(ylab, LocusID)
+
+p2 <- p1_nice_df %>%
+  ggplot(aes(x = id, y = ylab)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  scale_y_discrete(labels = setNames(p1_nice_df$ylab2, p1_nice_df$ylab)) +
+  labs(y = "Genes",
+       x = "",
+      ) +
+  facet_wrap(~subgenome, scales = "free_y") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.height = unit(0.7, "lines"),
+        legend.position = "top",
+        legend.box = "horizontal")
+p2
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/plumeria_leaf_pathway_subgenomes_23March26.png", height = 8, width = 12)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/plumeria_leaf_pathway_subgenomes_23March26.svg", height = 8, width = 12)
+```
+
+## Cell type strip
+```{r}
+Leaf_cell_type_strip2 <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "" )) +
+  geom_tile(aes(fill = cell_type)) +
+  scale_fill_manual(values = c(brewer.pal(8, "Paired"), "grey80")) +
+  guides(fill = guide_legend(nrow = 2)) +
+  labs(fill = "Cell type") +
+  theme_void() +
+  theme(legend.position = "none",
+    strip.text = element_blank(),
+    strip.background = element_blank()
+  )
+
+Leaf_cell_type_strip2
+ggsave(file = "/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/leaf_cell_strip.svg", height = 1, width = 12)
+```
+
+
+```{r}
+p2_strip_A <- leaf_cell_type_assignment %>% 
+  mutate(subgenome = "A")
+p2_strip_B <- leaf_cell_type_assignment %>% 
+  mutate(subgenome = "B")
+
+p2_strip <- bind_rows(p2_strip_A, p2_strip_B) %>%
+  ggplot(aes(x = cluster, y = "" )) +
+  geom_tile(aes(fill = cell_type)) +
+  scale_fill_manual(values = c(brewer.pal(8, "Paired"), "grey80")) +
+  facet_wrap(~subgenome) +
+  theme_void() +
+  theme(legend.position = "none",
+    strip.text = element_blank(),
+    strip.background = element_blank()
+  )
+
+p2_strip
+
+
+p2_annotated <- wrap_plots(p2,
+          p2_strip,
+          heights = c(1, 0.03), 
+          widths = c(1), nrow = 2, ncol = 1)
+p2_annotated
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+_____________old analyses
+
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type2 == 'Companion cell') %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Leaf Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/companion_cells_17Dec25.svg", height = 24, width = 10)
+```
+```{r}
+celltypes <- dotplot %>%
+  inner_join(
+    markers3 %>%
+      filter(
+        str_detect(Name, regex("guard", ignore_case = TRUE)) |
+        str_detect(cell_type, regex("guard", ignore_case = TRUE)) |
+        str_detect(Curator_summary, regex("guard", ignore_case = TRUE))
+      ) %>% mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Leaf Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/guard_cells_17Dec25.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/guard_cells_17Dec25.png", height = 24, width = 10)
+
+```
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type == 'Trichome') %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Leaf Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/trichome_17Dec25.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/trichome_17Dec25.png", height = 24, width = 10)
+
+```
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type2 == 'Vasculature') %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Leaf Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/vasculature_17Dec25.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/vasculature_17Dec25.png", height = 24, width = 10)
+
+```
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type2 == 'Phloem' | cell_type2 == "Procambium" | cell_type2 == "Procambium-PP") %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Leaf Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/phloem_17Dec25.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/phloem_17Dec25.png", height = 24, width = 10)
+
+```
+```{r}
+celltypes <- dotplot %>% 
+  inner_join(markers3 %>%
+               filter(cell_type2 == 'Xylem' | cell_type2 == "Procambium-XP") %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', Name, "-", features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "Leaf Cluster",
+       title = "") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/xylem_17Dec25.svg", height = 24, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/xylem_17Dec25.png", height = 24, width = 10)
+
+```
+
+Assign clusters according to hypothesized cell-types
+Cluster						
+0	Mesophyll	Pluob.v4.9bG009550		LOX3		
+		Pluob.v4.1bG042490		Lhcb5		
+		Pluob.v4.17bG004630		GER3		
+		Pluob.v4.9aG007430		CA1		
+1	Vasculature	Pluob.v4.7bG024310		VND1		
+		Pluob.v4.7aG007320		VND7		
+		Pluob.v4.11bG024660		ATHB-14		
+		Pluob.v4.3aG039710		ARF5		
+2	Mesophyll	Same as 1				
+3	Bundle-sheath	Pluob.v4.10bG024590		CALS7		
+		Pluob.v4.8bG000240		APL		
+		Pluob.v4.12aG020160		BAM3		
+		Pluob.v4.1aG004360		XYP1		
+4	Adaxial Epidermis	Pluob.v4.14bG020300		LTPG1		
+		Pluob.v4.4bG029890		LACS2		
+		Pluob.v4.10bG000380		KCS1		
+		Pluob.v4.1bG021330		protodermal factor 1		
+		Pluob.v4.17bG007530		YORE-YORE 1		
+5	Proliferating	Pluob.v4.6aG007520		AT1G63100		
+		Pluob.v4.11bG036540		gamma histone variant H2AX	Leaf	seurat denovo
+6	Mesophyll	same as 1				
+7	Proliferating	Pluob.v4.6aG007520		AT1G63100		
+		Pluob.v4.8bG003230		AT3G20150		
+8	Mesophyll	Pluob.v4.11bG007140		ENH1		
+		Pluob.v4.10aG017320		Lhcb4.1		
+		Pluob.v4.9aG013120		RbcS2B		
+		Pluob.v4.5bG009320		STOMAGEN		
+9	Unassigned	Pluob.v4.8bG022770		AT1G67360		
+		Pluob.v4.13bG014160		MET2B		
+		Pluob.v4.2aG021410		AT1G18210		
+10	Proliferating	same as 5 and 7				
+11	Mesophyll	Pluob.v4.5bG027550		rubisco activase	Leaf	seurat denovo
+		Pluob.v4.3bG033470		chlorophyll binding family	Leaf	seurat denovo
+12	Abaxial Epidermis	Pluob.v4.5aG027150		ANAC034		
+13	Unknown	Same as 9				
+14	Vasculature	same as 1 and 3				
+15	Guard cell	Pluob.v4.3aG021150		KAT1	potassium channel in Arabidopsis thaliana 1
+		Pluob.v4.4bG041960		KCS1	3-ketoacyl-CoA synthase 1
+		Pluob.v4.8aG005190		GPT1	glucose 6-phosphate/phosphate translocator 1
+		Pluob.v4.17aG023920		PBD2	20S proteasome beta subunit D2
+		Pluob.v4.11aG032320		SAD1	Small nuclear ribonucleoprotein family protein
+		Pluob.v4.17bG003800		AT2G19450	membrane bound O-acyl transferase (MBOAT) family protein
+		Pluob.v4.11bG037190		TPK1	thiamin pyrophosphokinase1
+		Pluob.v4.10bG021090		CAX7	calcium exchanger 7
+		Pluob.v4.14aG008020		mMDH2	Lactate/malate dehydrogenase family protein
+16	IPAP	Pluob.v4.18aG008600		IO
+  Pluob.v4.4bG014130		7DLH		
+
+Filter by the following genes in marker list:
+c("Pluob.v4.9bG009550",	"Pluob.v4.1bG042490",	"Pluob.v4.17bG004630",	"Pluob.v4.9aG007430",	"Pluob.v4.7bG024310",	"Pluob.v4.7aG007320",	"Pluob.v4.11bG024660",	"Pluob.v4.3aG039710",	"Pluob.v4.10bG024590",	"Pluob.v4.8bG000240",	"Pluob.v4.12aG020160",	"Pluob.v4.1aG004360",	"Pluob.v4.14bG020300",	"Pluob.v4.4bG029890",	"Pluob.v4.10bG000380",	"Pluob.v4.1bG021330",	"Pluob.v4.17bG007530",	"Pluob.v4.6aG007520",	"Pluob.v4.11bG036540",	"Pluob.v4.6aG007520",	"Pluob.v4.8bG003230",	"Pluob.v4.11bG007140",	"Pluob.v4.10aG017320",	"Pluob.v4.9aG013120",	"Pluob.v4.5bG009320",	"Pluob.v4.8bG022770",	"Pluob.v4.13bG014160",	"Pluob.v4.2aG021410",	"Pluob.v4.5bG027550",	"Pluob.v4.3bG033470",	"Pluob.v4.5aG027150",	"Pluob.v4.3aG021150",	"Pluob.v4.4bG041960",	"Pluob.v4.6aG007160",	"Pluob.v4.17aG023920",	"Pluob.v4.11aG032320",	"Pluob.v4.17bG003800",	"Pluob.v4.11bG037190",	"Pluob.v4.10bG021090",	"Pluob.v4.14aG008020",	"Pluob.v4.15bG023870",	"Pluob.v4.7bG029150",	"Pluob.v4.18aG008600",	"Pluob.v4.4bG014130")
+
+```{r}
+patterns <- c("Pluob.v4.9bG009550",	"Pluob.v4.1bG042490",	"Pluob.v4.17bG004630",	"Pluob.v4.9aG007430",	"Pluob.v4.7bG024310",	"Pluob.v4.7aG007320",	"Pluob.v4.11bG024660",	"Pluob.v4.3aG039710",	"Pluob.v4.10bG024590",	"Pluob.v4.8bG000240",	"Pluob.v4.12aG020160",	"Pluob.v4.1aG004360",	"Pluob.v4.14bG020300",	"Pluob.v4.4bG029890",	"Pluob.v4.10bG000380",	"Pluob.v4.1bG021330",	"Pluob.v4.17bG007530",	"Pluob.v4.6aG007520",	"Pluob.v4.11bG036540",	"Pluob.v4.6aG007520",	"Pluob.v4.8bG003230",	"Pluob.v4.11bG007140",	"Pluob.v4.10aG017320",	"Pluob.v4.9aG013120",	"Pluob.v4.5bG009320",	"Pluob.v4.8bG022770",	"Pluob.v4.13bG014160",	"Pluob.v4.2aG021410",	"Pluob.v4.5bG027550",	"Pluob.v4.3bG033470",	"Pluob.v4.5aG027150",	"Pluob.v4.3aG021150",	"Pluob.v4.4bG041960",	"Pluob.v4.6aG007160",	"Pluob.v4.17aG023920",	"Pluob.v4.11aG032320",	"Pluob.v4.17bG003800",	"Pluob.v4.11bG037190",	"Pluob.v4.10bG021090",	"Pluob.v4.14aG008020",	"Pluob.v4.15bG023870",	"Pluob.v4.7bG029150",	"Pluob.v4.18aG008600",	"Pluob.v4.4bG014130")
+pattern_regex <- str_c(patterns, collapse = "|")
+leaf_markers <- expressed_markers %>% filter(str_detect(gene_ID, pattern_regex)) %>%
+  mutate(Name2 = case_when(
+    str_detect(Name, "^AT\\d+G") ~ Short_description,
+    T ~ Name
+  ))%>%
+  mutate(Name = case_when(
+    str_detect(Name2, "Calcium-binding EF-hand family protein") ~ "CA bind EF-hand",
+    str_detect(Name2, "Rubber elongation factor") ~ "REF",
+    str_detect(Name2, "GRAS family transcription factor") ~ "GRAS",
+    str_detect(Name2, "Kinesin motor family protein") ~ "Kinesin motor",
+    str_detect(Name2, "KNOTTED") ~ "KNOTTED",
+    str_detect(Name2, "O-fucosyltransferase") ~ "(O-FucT)",
+    str_detect(Name2, "S-adenosyl-L-methionine-dependent") ~ "SAM-dependent MT",
+    str_detect(Name2, "MBOAT") ~ "MBOAT",
+    T ~ Name2
+  ))
+
+#Add genes not in marker list
+denovo <- tibble(
+  Name       = c("H2AX", "rubisco activase","chlorophyll binding"),
+  cell_type2  = c("Cell division", "Mesophyll","Mesophyll"),
+  cell_type  = c("Cell division", "Mesophyll","Mesophyll"),
+  Organ      = c("Leaf", "Leaf","Leaf"),
+  gene_ID    = c("Pluob.v4.11bG036540", "Pluob.v4.5bG027550","Pluob.v4.3bG033470"),
+  subgenome  = c("B", "B","B")
+)
+
+leaf_markers <- bind_rows(leaf_markers, denovo)
+```
+
+
+```{r}
+dotplot <- DotPlot(leaf.combined, features = unique(leaf_markers$gene_ID))$data
+celltypes2 <- dotplot %>% 
+  inner_join(leaf_markers %>%
+               mutate(order = as.numeric(as.factor(cell_type2))),
+             by = c("features.plot"="gene_ID"), multiple = 'first') %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type2, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type2,':', features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Markers",
+       x = "Leaf Clusters") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+       # axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes2
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/selective_marker_expression_17Dec25.png", height = 9, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/selective_marker_expression_17Dec25.svg", height = 9, width = 10)
+
+```
+save markers as table
+
+```{r}
+write_delim(leaf_markers, file = "/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/markers_used_17Dec25.csv", delim = ",")
+```
+
+Reorder the columns by cell types
+```{r}
+Marker_dotplot <- DotPlot(leaf.combined, 
+                          features = unique(leaf_markers$gene_ID))
+
+Marker_dotplot_nice_df <- Marker_dotplot$data %>% 
+  mutate(gene_ID = row.names(.)) %>% 
+  full_join(leaf_markers %>% 
+              distinct(gene_ID, .keep_all = T),
+             by = join_by(features.plot == gene_ID)) %>% 
+    mutate(gene_ID = str_sub(gene_ID, end = -8)) %>% 
+   mutate(cell_type3 = case_when(
+    str_detect(cell_type2, "Meso") ~ "Mesophyll",
+    str_detect(cell_type2, "PP") ~ "Phloem Precursor",
+    str_detect(cell_type2, "XP") ~ "Xylem Precursor",
+    str_detect(cell_type2, "Com|Vasc|Bundle") ~ "Vasculature",
+    str_detect(cell_type2, "Xylem") ~ "Xylem",
+    str_detect(cell_type2, "Phloem") ~ "Phloem",
+    str_detect(cell_type2, "Trich") ~ "Trichome",
+    str_detect(cell_type2, "Epi") ~ "Epiderm",
+    str_detect(cell_type2, "Guard") ~ "Guard",
+    str_detect(cell_type2, "IPAP") ~ "IPAP",
+    str_detect(cell_type2, "Cell division|Embryo")  ~ "Prolif",
+    T ~ cell_type2
+  )) %>% 
+  mutate(cell_type3 = factor(cell_type3, levels = c(
+    "Mesophyll", "Epiderm", "Trichome", "Xylem Precursor", "Phloem Precursor", "Xylem", "Phloem", "Vasculature", "Prolif","Guard", "IPAP"
+  ))) %>% 
+  mutate(cell_type4 = as.numeric(cell_type3)) %>% 
+  mutate(gene_ID = reorder(gene_ID, -cell_type4))  %>% 
+  mutate(LocusID = str_remove(
+               str_sub(features.plot, end = -8),
+               "^Pluob\\.v4\\."),
+    ylab = paste0(features.plot),
+    ylab2 = paste0(cell_type3,':', features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -cell_type4)) %>%
+  mutate(id = factor(id, levels = c(
+    "0", "2", "6", "8", "11", #Mesophyll
+     "4","12", #Protodermal
+    "1", "3", "14", #Vasculature
+    "5", "7", "10", #Proliferating
+    "16", #IPAP
+    "9","13", #Epidermis
+    "15" #Guard cells
+  ))) %>% 
+  dplyr::filter(is.na(avg.exp.scaled) == F)
+
+```
+
+0	Mesophyll
+1	Vasculature
+2	Mesophyll
+3	Vasculature
+4	Protodermal
+5	Proliferating
+6	Mesophyll
+7	Proliferating
+8	Mesophyll
+9	Epidermis
+10	Proliferating
+11	Mesophyll
+12	Protodermal
+13	Epidermis
+14	Vasculature
+15	Guard cell
+16	IPAP
+
+```{r}
+Marker_dot <- Marker_dotplot_nice_df %>% ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(y = "",
+       x = "Leaf Clusters",
+       fill = "Avg. Exp.",
+       size = "% Exp.") +
+  scale_y_discrete(labels = setNames(Marker_dotplot_nice_df$ylab2, Marker_dotplot_nice_df$ylab)) +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+Marker_dot
+```
+
+reorder clusters according to hypothesized cell-types
+    "0", "2", "6", "8", "11", #Mesophyll
+     "4", #Adaxial Epidermis
+    "12", #Abaxial Epidermis
+    "1", "14", #Vasculature
+    "3", #Vasculature 
+    "5", "7", "10", #Proliferating
+    "16", #IPAP
+    "9","13", "15" #Unassigned
+
+```{r}
+leaf_cell_type_assignment <- data.frame(
+  cluster = c(0:16)
+) %>% 
+  mutate(cell_type = case_when(
+    cluster == 0 | 
+      cluster == 2 | 
+      cluster == 6 |
+      cluster == 8 |
+      cluster == 11 ~ "Mesophyll",
+    cluster == 1 |
+      cluster == 14 ~ "Vasculature",
+    cluster == 3 ~ "Vasculature",
+    cluster == 4 |
+      cluster == 12 ~ "Epidermal",
+      cluster == 9 |
+      cluster == 13  ~ "Unassigned",
+      cluster == 5 |  
+      cluster == 7 |
+      cluster == 10 ~ "Proliferating",
+    cluster == 15  ~ "Unassigned",
+    cluster == 16 ~ "IPAP",
+    T ~ "Unassigned"
+  )) %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermal",
+                              "Vasculature",
+                              "Proliferating", "IPAP", "Unassigned"
+                            ))) %>% 
+  mutate(cluster = factor(cluster, levels = c(
+    "0", "2", "6", "8", "11", #Mesophyll
+     "4", #Adaxial Epidermis
+    "12", #Abaxial Epidermis
+    "1", "14", #Vasculature
+    "3", #Vasculature 
+    "5", "7", "10", #Proliferating
+    "16", #IPAP
+    "9","13", "15" #Unassigned
+  )))
+
+Leaf_cell_type_strip <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "" )) +
+  geom_tile(aes(fill = cell_type)) +
+  scale_fill_manual(values = c(brewer.pal(5, "Paired"), "grey80")) +
+  guides(fill = guide_legend(nrow = 3)) +
+  labs(fill = "Cell type") +
+  theme_void() +
+  theme(
+    legend.position = "bottom" ,
+    text = element_text(size = 14)
+  )
+
+Leaf_cell_type_strip
+```
+
+
+```{r}
+Leaf_cell_type_mkr_text <- Marker_dotplot_nice_df %>% 
+  dplyr::filter(id == 0) %>% 
+  ggplot(aes(x = "", y = ylab2)) +
+  geom_text(aes(label = Name), fontface = "italic") +
+  theme_void()
+Leaf_cell_type_mkr_text
+
+blank <- data.frame(
+  x = 0,
+  y = 0
+) %>% 
+  ggplot(aes(x, y)) +
+  theme_void()
+
+Marker_dot_strip <- wrap_plots(Marker_dot, Leaf_cell_type_mkr_text,
+          Leaf_cell_type_strip, blank,
+          heights = c(1, 0.03), 
+          widths = c(1, 0.2), nrow = 2, ncol = 2)
+
+Marker_dot_strip
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/plumeria_leaf_cluster_assignment_17Dec25.png", height = 8, width = 14)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/plumeria_leaf_cluster_assignment_17Dec25.svg", height = 8, width = 14)
+```
+
+UMAP with cell type info
+```{r}
+leaf.combined <- readRDS("/scratch/ac05869/plob_sc/seurat_data/PLU_leaf_cleaned_integrated.rds")
+
+leaf.combined@meta.data <- leaf.combined@meta.data %>% 
+  mutate(cell_type = case_when(
+    seurat_clusters == 0 | 
+      seurat_clusters == 2 | 
+      seurat_clusters == 6 |
+      seurat_clusters == 8 |
+      seurat_clusters == 11 ~ "Mesophyll",
+    seurat_clusters == 1 |
+      seurat_clusters == 14 ~ "Vasculature",
+    seurat_clusters == 3 ~ "Vasculature",
+    seurat_clusters == 4 |
+      seurat_clusters == 12 ~ "Epidermal",
+      seurat_clusters == 9 |
+      seurat_clusters == 13  ~ "Unassigned",
+      seurat_clusters == 5 |  
+      seurat_clusters == 7 |
+      seurat_clusters == 10 ~ "Proliferating",
+    seurat_clusters == 15  ~ "Unassigned",
+    seurat_clusters == 16 ~ "IPAP",
+    T ~ "Unassigned"
+  )) %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermal",
+                              "Vasculature",
+                              "Proliferating", "IPAP", "Unassigned"
+                            )))
+
+DimPlot(leaf.combined, reduction = "umap", label = T,
+        group.by = "cell_type", label.size = 5, repel = T
+        ) +
+  theme_void() +
+  scale_color_manual(values = c(brewer.pal(5, "Paired"), "grey80")) +
+  labs(title = "") +
+  theme(
+    text = element_text(size = 14, color = "black"),
+    legend.position = "none")
+
+c(brewer.pal(5, "Paired"), "grey80")
+
+UMAP3 <- DimPlot(leaf.combined, reduction = "umap", label = T, label.size = 5, repel = T
+        ) +
+  theme_void() +
+#  scale_color_manual(values = c(brewer.pal(8, "Paired"), "grey80")) +
+  labs(title = "") +
+  theme(
+    text = element_text(size = 14, color = "black"),
+    legend.position = "none") +
+  scale_color_manual(values = c("0" = "#A6CEE3",
+                                "1" = "#B2DF8A",
+                                "2" = "#A6CEE3",
+                                "3" = "#B2DF8A",
+                                "4" = "#1F78B4",
+                                "5" = "#33A02C",
+                                "6" = "#A6CEE3",
+                                "7" = "#33A02C",
+                                "8" = "#A6CEE3",
+                                "9" =  "grey80",
+                                "10" = "#33A02C",
+                                "11" = "#A6CEE3",
+                                "12" = "#1F78B4",
+                                "13" = "grey80",
+                                "14" = "#B2DF8A",
+                                "15" = "grey80",
+                                "16" = "#FB9A99"
+                                ))
+
+UMAP3
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/UMAP_cell_types_18Dec25.svg", height = 6, width = 5, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/UMAP_cell_types_18Dec25.png", height = 6, width = 5, bg = "white")
+```
+
+```{r}
+leaf_assignment_graph <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "")) +
+  facet_wrap(~ cell_type, scales = "free", ncol = 2) +
+  geom_point(size = 5, aes(color = cell_type)) +
+  geom_text(aes(label = cluster)) +
+  labs(x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  scale_color_manual(values = c(brewer.pal(8, "Paired"), "grey80")) +
+  theme(
+    legend.position = "none",
+    panel.grid = element_blank(),
+    text = element_text(size = 14, color = "black"),
+    axis.text.x = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA)
+    )
+
+leaf_assignment_graph
+
+RNA_umap <- wrap_plots(UMAP3 +
+                         labs(tag = ""), leaf_assignment_graph, 
+           nrow = 2 , heights = c(1, 0.7))
+
+RNA_umap
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/UMAP_cell_types_legend_18Dec25.svg", height = 6, width = 3, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/UMAP_cell_types_legend_18Dec25.png", height = 6, width = 3, bg = "white")
+```
+
+stats by cell type
+```{r}
+leaf.combined@meta.data %>% 
+  group_by(cell_type) %>% 
+  dplyr::count() %>% 
+  mutate(total = nrow(leaf.combined@meta.data)) %>% 
+  mutate(percentage = n/total) %>% 
+  ungroup()
+```
+
+
+```{r}
+RNA_by_rep <- leaf.combined@meta.data %>% 
+  group_by(cell_type, Run) %>% 
+  dplyr::count() %>% 
+  inner_join(
+    leaf.combined@meta.data %>% 
+  group_by(Run) %>% 
+  dplyr::count() %>% 
+  ungroup() %>% 
+  dplyr::rename(total = n), 
+  by = "Run"
+  ) %>% 
+  mutate(percentage = n/total * 100) %>% 
+  ungroup() %>% 
+  mutate(cell_type = factor(cell_type, 
+                            levels = c(
+                              "Mesophyll", "Epidermal",
+                              "Vasculature",
+                              "Proliferating", "IPAP", "Unassigned"
+                            ))) %>% 
+  mutate(cell_type = fct_rev(cell_type)) %>% 
+  mutate(Run = case_when(
+    Run == "PLU_BB" ~ "Rep1",
+    Run == "PLU_BC" ~ "Rep2"
+  )) %>% 
+  ggplot(aes(x = Run, y = percentage)) +
+  geom_bar(stat = "identity", aes(fill = cell_type)) +
+  scale_fill_manual(values = rev(c(brewer.pal(5, "Paired"), "grey80"))) +
+  labs(x = "", 
+       y = "% cells by cell type",
+       fill = "cell type") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  theme(axis.text.y = element_text(angle = 0, hjust = 1, color = "black"))
+
+RNA_by_rep
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/cell_type_proportions_18Dec25.svg", height = 6, width = 3, bg = "white")
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/cell_type_proportions_18Dec25.png", height = 6, width = 3, bg = "white")
+```
+
+For annotating the single cell data with only Li's markers
+```{r}
+cro_plum_synt <- all_syntelogs %>%
+  select(repGene, C.roseus, P.spp_A, P.spp_B)
+cro_plum_synt$repGene <- gsub("\\.\\d+$", "", cro_plum_synt$repGene)
+cro_markers <- read_tsv(file = "/scratch/ac05869/plob_sc/cluster_anno/leaf_markers_croseus_v3.tsv")
+
+cell_Type_markers <- cro_plum_synt%>%
+  right_join(cro_markers, by = "repGene") %>% 
+  filter(
+    !is.na(P.spp_A), P.spp_A != "",
+    !is.na(P.spp_B), P.spp_B != ""
+  )%>%
+  separate_rows(P.spp_A, sep = ",") %>%
+  mutate(P.spp_A = trimws(P.spp_A))%>%
+  separate_rows(P.spp_B, sep = ",") %>%
+  mutate(P.spp_B = trimws(P.spp_B)) %>%
+  filter(!grepl("\\+", P.spp_A))%>%
+  filter(!grepl("\\+", P.spp_B))
+
+a.mark <- cell_Type_markers %>%
+  select(!c(C.roseus, P.spp_B)) %>%
+  unique()%>%
+  rename(gene_ID = P.spp_A)
+dim(a.mark)
+b.mark <- cell_Type_markers %>%
+  select(!c(C.roseus, P.spp_A))%>%
+  unique() %>%
+  rename(gene_ID = P.spp_B)
+
+both.mark <- rbind(a.mark, b.mark) %>% unique()
+both.mark$gene_ID <- gsub("\\.\\d+$", "", both.mark$gene_ID)
+
+```
+
+```{r}
+dotplot <- DotPlot(leaf.combined, features = unique(both.mark$gene_ID))$data
+celltypes2 <- dotplot %>% 
+  inner_join(both.mark %>%
+               mutate(order = as.numeric(as.factor(cell_type))),
+             by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(features.plot, end = -8),
+    ylab = paste0(cell_type, ":", LocusID),  # make this new variable
+    ylab2 = paste0(cell_type,':', features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -order)
+) %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+#  scale_y_continuous(
+#    name = "Marker",
+#    sec.axis = sec_axis(., name = ylab2)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Markers",
+       x = "Leaf Clusters") +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+       # axis.text.y.left = element_text(hjust = 0.5, face = "italic"),
+        legend.key.width = unit(0.8, "lines"))
+
+celltypes2
+```
+
+
+```{r}
+Marker_dotplot_nice_df <- dotplot %>% 
+  mutate(gene_ID = row.names(.)) %>% 
+  full_join(both.mark %>% 
+              distinct(gene_ID, .keep_all = T),
+             by = join_by(features.plot == gene_ID)) %>% 
+    mutate(gene_ID = str_sub(gene_ID, end = -8)) %>% 
+  mutate(cell_type = factor(cell_type)) %>% 
+  mutate(cell_type2 = as.numeric(cell_type)) %>% 
+  mutate(gene_ID = reorder(gene_ID, -cell_type2))  %>% 
+  mutate(LocusID = str_remove(
+               str_sub(features.plot, end = -8),
+               "^Pluob\\.v4\\."),
+    ylab = paste0(features.plot),
+    ylab2 = paste0(cell_type,':', features.plot),  # make this new variable
+    ylab2 = reorder(ylab2, -cell_type2)) %>%
+  mutate(id = factor(id, levels = c(
+    "0", "2", "6", "8", "11", #Mesophyll
+     "4", #Adaxial Epidermis
+    "12", #Abaxial Epidermis
+    "1", "14", #Vasculature
+    "3", #Vasculature 
+    "5", "7", "10", #Proliferating
+    "16", #IPAP
+    "9","13", "15" #Unassigned
+  ))) %>% 
+  dplyr::filter(is.na(avg.exp.scaled) == F)
+
+Marker_dot <- Marker_dotplot_nice_df %>% ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_fill_viridis(option = "A", begin = 0, end = 0.9) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  guides(size = guide_legend(override.aes = list(fill = "grey40"), nrow = 2)) +
+  labs(y = "",
+       x = "Leaf Clusters",
+       fill = "Avg. Exp.",
+       size = "% Exp.") +
+  scale_y_discrete(labels = setNames(Marker_dotplot_nice_df$ylab2, Marker_dotplot_nice_df$ylab)) +
+  theme_classic() +
+  theme(text = element_text(size = 14, color = "black"),
+        axis.text = element_text(color = "black"),
+        legend.position = "top",
+        legend.box = "horizontal",
+        legend.key.height = unit(0.7, "lines"))
+
+
+Leaf_mrkr_txt <- Marker_dotplot_nice_df %>% 
+  dplyr::filter(id == 0) %>% 
+  ggplot(aes(x = "", y = ylab2)) +
+  geom_text(aes(label = Symbol), fontface = "italic") +
+  theme_void()
+Leaf_mrkr_txt
+
+blank <- data.frame(
+  x = 0,
+  y = 0
+) %>% 
+  ggplot(aes(x, y)) +
+  theme_void()
+
+Marker_dot_strip <- wrap_plots(Marker_dot, Leaf_mrkr_txt, blank,
+          heights = c(1, 0.03), 
+          widths = c(1, 0.2), nrow = 2, ncol = 2)
+
+Marker_dot_strip
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/catharanthus_marker_expression_22jan26.png", height = 9, width = 10)
+ggsave("/scratch/ac05869/plob_sc/pathway_analysis/markers/leaf/catharanthus_marker_expression_22jan26.svg", height = 9, width = 10)
+
+```

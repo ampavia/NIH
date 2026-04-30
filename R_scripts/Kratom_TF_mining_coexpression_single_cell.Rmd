@@ -1,0 +1,123 @@
+---
+title: "Kratom_TF_mining"
+author: "Anne Pavia"
+date: "2025-11-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(igraph)
+library(ggraph)
+library(Seurat)
+library(readxl)
+library(patchwork)
+library(RColorBrewer)
+library(viridis)
+library(showtext)
+library(ape)
+#showtext_auto(enable = T)
+set.seed(666)
+options(bitmapType='cairo')
+```
+
+
+## UGA leaf nuclei co-expression data
+PIPseq and multiome nuclei RNA seq from UGA leaf
+
+```{r}
+node_table <- readRDS(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/Integrated_leaf_node_table_p0.01.rds")
+my_network_modules <- readRDS(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/coex_out/my_network_modules_5_genes.rds")
+```
+
+## Marker genes
+```{r}
+KRT_RNA_markers<- readRDS(file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Integrated_RNA_Data/KRT_RNA_markers.rds")
+
+```
+
+## Intersect iridoid pathway genes
+```{r}
+mod8 <-my_network_modules %>% filter(module == 8)
+mod8_genes <- node_table %>%
+  filter(gene_ID %in% mod8$gene_ID)
+dim(mod8_genes) #6176
+
+
+
+clust_8 <- KRT_RNA_markers %>% filter(cluster == 8) %>%
+  mutate(gene_ID = gene)
+dim(clust_8) #929
+
+clust_8_1 <- KRT_RNA_markers %>% filter(cluster == 8 | cluster == 1) %>%
+  mutate(gene_ID = gene)
+dim(clust_8_1) #1529
+
+clust_1 <- KRT_RNA_markers %>% filter(cluster == 1) %>%
+  mutate(gene_ID = gene)
+dim(clust_1) #600
+
+
+iridoid_genes <- inner_join(clust_8, mod8_genes, by = "gene_ID")
+dim(iridoid_genes) #497
+
+iridoid_genes2 <- inner_join(clust_8_1, mod8_genes, by = "gene_ID")
+dim(iridoid_genes2) #826
+
+iridoid_genes3 <- inner_join(clust_1, mod8_genes, by = "gene_ID")
+dim(iridoid_genes3) #329
+
+irid <- iridoid_genes3 %>%
+  filter(gene_ID %in% iridoid_genes$gene_ID)
+
+write_delim(irid, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/cluster_1_8_module_8_iridoid_pathway_genes.csv", delim = ',')
+```
+
+
+## Intersect MEP pathway genes
+```{r}
+mod12 <-my_network_modules %>% filter(module == 12)
+mod12_genes <- node_table %>%
+  filter(gene_ID %in% mod12$gene_ID)
+dim(mod12_genes) #4364
+
+clust_19 <- KRT_RNA_markers %>% filter(cluster == 19) %>%
+  mutate(gene_ID = gene)
+dim(clust_19) #617
+
+
+MEP <- inner_join(clust_19, mod12_genes, by = "gene_ID")
+
+write_delim(MEP, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/cluster_19_module_12_MEP_pathway_genes.csv", delim = ',')
+
+```
+
+## Intersect Alkaloid pathway genes (modules 7 and 5)
+```{r}
+mod7 <-my_network_modules %>% filter(module == 7)
+mod7_genes <- node_table %>%
+  filter(gene_ID %in% mod7$gene_ID)
+dim(mod7_genes) #6884
+
+mod5 <-my_network_modules %>% filter(module == 5)
+mod5_genes <- node_table %>%
+  filter(gene_ID %in% mod5$gene_ID)
+dim(mod5_genes) #3509
+
+clust_0 <- KRT_RNA_markers %>% filter(cluster == 0) %>%
+  mutate(gene_ID = gene)
+dim(clust_0) #602
+
+
+mod5_intersect <- inner_join(clust_0, mod5_genes, by = "gene_ID")
+dim(mod5_intersect) #161
+
+mod7_intersect <- inner_join(clust_0, mod7_genes, by = "gene_ID") #seem very photosynthesis-related
+dim(mod7_intersect) #200
+
+
+
+write_delim(mod5_intersect, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/cluster_0_module_5_MIA_pathway_genes.csv", delim = ',')
+write_delim(mod7_intersect, file = "/scratch/ac05869/10X_Multiome/KRT_leaf/seurat_out/Data/cluster_0_module_7_MIA_pathway_genes.csv", delim = ',')
+
+```
