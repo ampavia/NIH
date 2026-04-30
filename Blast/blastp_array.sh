@@ -4,6 +4,7 @@
 #SBATCH --ntasks=1			                            # Single task job
 #SBATCH --cpus-per-task=4		                        # Number of cores per task - match this to the num_threads used by BLAST
 #SBATCH --mem=40gb			                            # Total memory for job
+#SBATCH --array=1-13
 #SBATCH --time=12:00:00  		                        # Time limit hrs:min:sec
 #SBATCH --output=/scratch/ac05869/MEP_evolution/err_out/%x_%j.out	# Location of standard output and error log files 
 #SBATCH --error=/scratch/ac05869/MEP_evolution/err_out/%x_%j.err		# Standard error log
