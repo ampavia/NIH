@@ -1,0 +1,57 @@
+Arabidopsis Gene ID,cell_type,Symbol,Reference,Reference DOI,gene,order,gene_anno,published_cell_type
+AT1G19150,Mesophyll,LHCA2,"Kim et al., 2021",https://doi.org/10.1093/plcell/koaa060,Caacu.v4.3G007100,1,NA,NA
+AT1G29910,Mesophyll,CAB3,"Kim et al., 2021",https://doi.org/10.1093/plcell/koaa060,Caacu.v4.11G005950,2,NA,NA
+AT2G05100,Mesophyll,LHCB1,"Kim et al., 2021",https://doi.org/10.1093/plcell/koaa060,Caacu.v4.10G012330,3,NA,NA
+AT3G01500,Mesophyll,CA1,"Kim et al., 2021",https://doi.org/10.1093/plcell/koaa060,Caacu.v4.4G018650,4,NA,NA
+AT1G17420,Mesophyll,LOX3,Lee et al 2025,NA,Caacu.v4.4G003260,5,lipoxygenase 3,Mesophyll
+AT4G10340,Mesophyll,Lhcb5,Lee et al 2025,NA,Caacu.v4.1G000800,6,light harvesting complex of photosystem II 5,Mesophyll
+AT4G12970,Mesophyll,STOMAGEN,Lee et al 2025,NA,Caacu.v4.2G006890,7,stomagen,Mesophyll differentiation
+AT5G01530,Mesophyll,Lhcb4.1,Lee et al 2025,NA,Caacu.v4.16G010940,8,light harvesting complex photosystem II,Mesophyll
+AT5G17170,Mesophyll,ENH1,Lee et al 2025,NA,Caacu.v4.18G012520,9,rubredoxin family protein,Mesophyll
+AT5G20630,Mesophyll,GER3,Lee et al 2025,NA,Caacu.v4.3G006860,10,germin 3,Mesophyll2
+AT5G38420,Mesophyll,RbcS2B,Lee et al 2025,NA,Caacu.v4.8G009160,11,Ribulose bisphosphate carboxylase (small chain) family protein,Mesophyll
+NA,Mesophyll,CaHGO,Valletta et al,doi.org/10.1186/1471-2229-10-69,Caacu.v4.6G001210,12,10-hydroxygeraniol oxidoreductase,NA
+AT1G68530,Epidermis,KCS6,"Kim et al., 2021",https://doi.org/10.1093/plcell/koaa060,Caacu.v4.21G005830,13,NA,NA
+AT4G04890,Epidermis,PDF2,"Abe et al., 2003",https://doi.org/10.1242/dev.00292,Caacu.v4.11G010310,14,NA,NA
+AT1G01120,Epidermis,KCS1,Lee et al 2025,NA,Caacu.v4.5G000190,15,3-ketoacyl-CoA synthase 1,Epidermis
+AT1G26960,Epidermis,AtHB23,Lee et al 2025,NA,Caacu.v4.19G007500,16,homeobox protein 23,Epidermis
+AT1G27950,Epidermis,LTPG1,Lee et al 2025,NA,Caacu.v4.19G010270,17,glycosylphosphatidylinositol-anchored lipid protein transfer 1,Epidermis
+AT1G35720,Epidermis,ANNAT1,Lee et al 2025,NA,Caacu.v4.9G007220,18,annexin 1,Epidermis
+AT1G49430,Epidermis,LACS2,Lee et al 2025,NA,Caacu.v4.15G011030,19,long-chain acyl-CoA synthetase 2,Epidermis
+AT1G75040,Epidermis,PR5,Lee et al 2025,NA,Caacu.v4.13G002050,20,pathogenesis-related gene 5,Epidermis
+AT2G02450,Epidermis,ANAC034,Lee et al 2025,NA,Caacu.v4.15G006890,21,NAC domain containing protein 35,Abaxial epidermis
+AT2G26580,Epidermis,YABBY5,"Giabard et al., poplar shoot atlas",NA,Caacu.v4.8G006110,22,plant-specific transcription factor YABBY family protein,Abaxial epidermis
+AT2G42840,Epidermis,PDF1,Lee et al 2025,NA,Caacu.v4.10G006550,23,protodermal factor 1,Protodermal/L1 meristem
+AT3G01140,Epidermis,MYB186,"Giabard et al., poplar shoot atlas",NA,Caacu.v4.4G017220,24,myb domain protein 106,Trichome initials
+AT4G34980,Epidermis,SLP2,Lee et al 2025,NA,Caacu.v4.14G000930,25,subtilisin-like serine protease 2,Epidermis
+AT5G57800,Epidermis,YORE-YORE 1,Lee et al 2025,NA,Caacu.v4.3G001960,26,Fatty acid hydroxylase superfamily,cuticle/wax
+AT3G24140,Epidermis/GC,FAMA,Ohashi-Ito et al. 2006,https://doi.org/10.1105/tpc.106.046136,Caacu.v4.2G024370,27,NA,NA
+AT1G46480,Vasculature,WOX4,"Kim et al., 2021",https://doi.org/10.1093/plcell/koaa060,Caacu.v4.9G009990,28,NA,NA
+AT1G79430,Vasculature,APL,"Kim et al., 2021",https://doi.org/10.1093/plcell/koaa062,Caacu.v4.3G007570,29,NA,NA
+AT3G25710,Vasculature,TMO5,De Rybel et al. 2013,http://dx.doi.org/10.1016/j.devcel.2012.12.013,Caacu.v4.21G006290,30,NA,NA
+AT5G19530,Vasculature,ACL5,"Kim et al., 2021",https://doi.org/10.1093/plcell/koaa061,Caacu.v4.13G012340,31,NA,NA
+NA,Vasculature,plasmodesmata-,this study,NA,Caacu.v4.19G003260,32,plasmodesmata-,NA
+NA,Vasculature,phloem,this study,NA,Caacu.v4.14G009030,33,phloem,NA
+AT1G06490,Phloem,CALS7,"Li et al 2023; Barratt et al., 2011",NA,Caacu.v4.17G001560,34,glucan synthase-like 7,Sieve element
+AT4G20270,Phloem,BAM3,"Li et al 2023; Lee et al 2025; Rodriguez-Villalon et al., 2014",NA,Caacu.v4.15G003030,35,Leucine-rich receptor-like protein kinase family protein,Procambium_PP
+AT5G64080,Phloem,XYP1,Lee et al 2025,NA,Caacu.v4.14G005820,36,Bifunctional inhibitor/lipid-transfer protein/seed storage 2S albumin superfamily protein,Procambium_PP
+AT1G19850,Xylem,ARF5,Li et al 2023; Lee et al 2025,NA,Caacu.v4.9G012220,37,Transcriptional factor B3 family protein / auxin-responsive factor AUX/IAA-related,Procambium_XP
+AT1G71930,Xylem,VND7,"Yamaguchi et al., 2011",NA,Caacu.v4.9G002440,38,vascular related NAC-domain protein 7,xylem
+AT2G18060,Xylem,VND1,"Li et al 2023; Zhou et al., 2014",NA,Caacu.v4.12G009000,39,vascular related NAC-domain protein 1,Vessel
+AT2G34710,Xylem,ATHB-14,"Li et al 2023; Prigge et al., 2005",NA,Caacu.v4.11G001150,40,Homeobox-leucine zipper family protein / lipid-binding START domain-containing protein,Procambium_XP
+AT1G02880,Guard cell,TPK1,Lee et al 2025,NA,Caacu.v4.2G002500,41,thiamin pyrophosphokinase1,Epidermis
+AT1G62990,Guard cell,AT1G62990,Lee et al 2025,NA,Caacu.v4.1G022140,42,KNOTTED-like homeobox of Arabidopsis thaliana 7,Trichome
+AT2G19450,Guard cell,AT2G19450,Lee et al 2025,NA,Caacu.v4.3G006470,43,membrane bound O-acyl transferase (MBOAT) family protein,Trichome
+AT3G15020,Guard cell,mMDH2,Lee et al 2025,NA,Caacu.v4.5G010200,44,Lactate/malate dehydrogenase family protein,Epidermis
+AT5G46240,Guard cell,KAT1,Nguyen et al 2026,NA,Caacu.v4.11G000180,45,potassium channel in Arabidopsis thaliana 1,Guard cell
+NA,STR+,STR1,"Bui et al., 2026",https://doi.org/10.1111/pbi.70386,Caacu.v4.8G010020,46,NA,NA
+NA,STR+,STR2,"Bui et al., 2026",https://doi.org/10.1111/pbi.70386,Caacu.v4.8G010000,47,NA,NA
+NA,STR+,STR3,this study,NA,Caacu.v4.8G009930,48,STR3,NA
+NA,Abaxial epidermis/Idioblast,CaTDC1,Valletta et al,doi.org/10.1186/1471-2229-10-69,Caacu.v4.3G015400,49,Tryptophan decarboxylase TDC1,NA
+NA,Idioblast,CaTDC2,Valletta et al,doi.org/10.1186/1471-2229-10-69,Caacu.v4.10G010430,50,Tryptophan decarboxylase TDC2,NA
+AT1G63100,Proliferating,GRAS,Lee et al 2025,NA,Caacu.v4.1G022390,51,GRAS family transcription factor,Cell division
+AT3G20150,Proliferating,Kinesin,Lee et al 2025,NA,Caacu.v4.10G003530,52,Kinesin motor family protein,Embryo
+AT5G27670 ,S phase,histone superfamily protein,"Bui et al., 2026",https://doi.org/10.1111/pbi.70386,Caacu.v4.14G009410,53,NA,NA
+AT1G07790 ,S phase,histone superfamily protein,"Bui et al., 2026",https://doi.org/10.1111/pbi.70386,Caacu.v4.6G008330,54,NA,NA
+AT1G76310 ,Mitosis,cyclin B,"Bui et al., 2026",https://doi.org/10.1111/pbi.70386,Caacu.v4.9G014530,55,NA,NA
+AT5G06150 ,Mitosis,cyclin B,"Bui et al., 2026",https://doi.org/10.1111/pbi.70386,Caacu.v4.7G001510,56,NA,NA
