@@ -1,0 +1,1037 @@
+---
+title: "Gelsemium leaf multiome"
+author: "Anne Pavia"
+date: "2026-08-08"
+output: html_document
+---
+
+>The purpose of this markdown is to provide information on how to integrate multiple 10x single cell multiome datasets across multiple replicates and tissues. In this example code, Gelsemium Leaf multiome libraries were used to generate a single multiome object. 
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(Seurat) #v5.2.1
+library(SeuratObject) #v5.0.2
+library(Signac) #v1.16.0
+library(GenomicRanges)
+
+set.seed(818)
+```
+
+#Step 1: Process GEX Data
+
+##GEX Data Integration
+```{r}
+integrated_GEX <- readRDS("/scratch/ac05869/gelsemium_sc/seurat_data/GEL_MPI_leaf_cleaned_integrated.rds")
+```
+
+#Step 2: Process ATAC Data
+
+##Generate chromatin assays for each ATAC library and generate QC metrics.
+```{r}
+#Set up inputs
+atac_samples <- c("GEL_BS_BO", "GEL_BT_BP") #these are data directories for replicate samples within the data_dir path
+data_dir = "/scratch/ac05869/gelsemium_sc/CR-ARC/"
+
+#Load in features file (bed format). Features are the genomic coordinates of open chromatin regions. NOTE: In order to integrate ATAC libraries in the next step, you MUST use a common set of peaks/features for all ATAC libraries. Cat all bed files, sort, then use bedtools merge. 
+peaks <- read.table(
+  file = "/scratch/ac05869/gelsemium_sc/CR-ARC/merged_peaks/GEL_leaf.atac_peaks.sorted.merged.bed",
+  col.names = c("chr","start","end")
+)
+
+#convert to genomic ranges. Necessary for the following step. 
+gr_peaks <- makeGRangesFromDataFrame(peaks)
+
+seurat_list <- list()
+
+#path to fragment file. Fragment file contains all of the fragments and where they map to. Analogous to read alignment data for RNA-seq.
+for (sample in atac_samples) {
+
+  fragpath <- paste0(data_dir,sample,"/outs/atac_fragments.tsv.gz")
+
+  #count fragments
+  fragcounts <- CountFragments(fragments = fragpath)
+
+  #filter fragments to only keep barcodes that more than 500 counts 
+  atac.cells <- fragcounts[fragcounts$frequency_count > 500, "CB"]
+
+  #create the fragment object
+  atac.frags <- CreateFragmentObject(path = fragpath, cells = atac.cells)
+
+  #create feature matrices. This step quantifies peaks in the library. 
+  counts <- FeatureMatrix(
+    fragments = atac.frags,
+    features = gr_peaks,
+    cells = rownames(atac.frags)
+  )
+
+  #create chrom assay and a seurat object
+  chrom_assay <- CreateChromatinAssay(counts, 
+                                      fragments = atac.frags)
+  seurat_obj <- CreateSeuratObject(chrom_assay, 
+                                   assay = "ATAC",
+                                   project = sample)
+  
+  #include info about fragments to the assay
+  rownames(fragcounts) <- fragcounts$CB
+  
+  
+  seurat_obj$fragments <-fragcounts[colnames(seurat_obj), "frequency_count"]
+  seurat_obj$mononucleosomal <- fragcounts[colnames(seurat_obj), "mononucleosomal"]
+  seurat_obj$nucleosome_free <- fragcounts[colnames(seurat_obj), "nucleosome_free"]
+  seurat_obj$reads_count <- fragcounts[colnames(seurat_obj), "reads_count"]
+
+  #calculate QC metrics
+  seurat_obj <- NucleosomeSignal(seurat_obj)
+  seurat_obj <- FRiP(
+  object = seurat_obj,
+  assay = 'ATAC',
+  total.fragments = "fragments"
+)
+  
+  #set the orig.ident to be able to identify samples later on
+  seurat_obj$orig.ident <- seurat_list[[sample]]
+  
+  #Store in list, using sample ID as name
+  seurat_list[[sample]] <- seurat_obj
+  
+}
+seurat_list
+#Save all of the objects for later (if needed)
+saveRDS(seurat_list[["GEL_BS_BO"]], "/scratch/ac05869/gelsemium_sc/seurat_data/GEL_BS_BO_ATAC.RDS")
+saveRDS(seurat_list[["GEL_BT_BP"]], "/scratch/ac05869/gelsemium_sc/seurat_data/GEL_BT_BP_ATAC.RDS")
+
+```
+
+##Make graphs of the UMI (nCount) and features (peaks)
+### Replicate 1
+```{r}
+#The goal is to determine what cut-offs of UMI and feature counts should be used to remove low-quality cells. 
+
+##if you used the code above, you can access each seurat object and its metadata from the list
+scatter <- seurat_list[["GEL_BS_BO"]]@meta.data %>% 
+  ggplot(aes(x = nCount_ATAC, y = nFeature_ATAC)) +
+  geom_point() +
+  geom_vline(xintercept = 100, color = "red") + #keep changing the lines until you feel it fits
+  geom_vline(xintercept = 25000, color = "red") +
+  geom_hline(yintercept = 175, color = "blue") +
+  geom_hline(yintercept = 25000, color = "blue") +
+  scale_x_log10() + #without the log scale, we would see much more cells towards the bottom of our graph
+  scale_y_log10() +
+  theme_classic()
+
+#Check the output
+print(scatter) #then go back up and adjust if needed
+
+#Also check the FRiP (fragment of reads in peak) scores
+summary(seurat_list[["GEL_BS_BO"]]@meta.data$FRiP) #0.1209  0.2073  0.4716  0.4212  0.5674  0.7965 
+
+#save scatter plot
+print(scatter)
+ggsave("/scratch/ac05869/gelsemium_sc/seurat_qc/GEL_BS_BO_ATAC_scatterplot.png", height = 10, width = 14, bg = "white")
+```
+### Replicate 2
+
+```{r}
+scatter <- seurat_list[["GEL_BT_BP"]]@meta.data %>% 
+  ggplot(aes(x = nCount_ATAC, y = nFeature_ATAC)) +
+  geom_point() +
+  geom_vline(xintercept = 100, color = "red") + #keep changing the lines until you feel it fits
+  geom_vline(xintercept = 25000, color = "red") +
+  geom_hline(yintercept = 175, color = "blue") +
+  geom_hline(yintercept = 25000, color = "blue") +
+  scale_x_log10() + #without the log scale, we would see much more cells towards the bottom of our graph
+  scale_y_log10() +
+  theme_classic()
+
+#Check the output
+print(scatter) # then go back up and adjust if needed
+
+#Also check the FRiP (fragment of reads in peak) scores
+summary(seurat_list[["GEL_BT_BP"]]@meta.data$FRiP) # 0.1166  0.1795  0.2064  0.3250  0.5132  0.7942 
+
+#save scatter plot
+print(scatter)
+ggsave("/scratch/ac05869/gelsemium_sc/seurat_qc/GEL_BT_BP_ATAC_scatterplot.png", height = 10, width = 14, bg = "white")
+```
+
+##Filter low quality cells from each ATAC assay
+
+Make sure the filtering parameters are those that you set in the scatter plots. In this case, both samples here used the same filtering criterion but this may need     to be individualized for each library.
+```{r}
+#call the samples again if needed
+atac_samples <- c("GEL_BS_BO", "GEL_BT_BP")
+
+#create another empty list for our subsetted ATAC assays
+seurat_list_sub <- list()
+
+for (sample in atac_samples) {
+  
+  #create individual seurat objects
+  obj <- seurat_list[[sample]]
+  
+  #set default assay
+  DefaultAssay(obj) <- "ATAC"
+  
+  #subset cells based on criteria determined above. In this case, all four samples here used the same filtering criterion but this may need     to be individualized for each library.
+  seurat_obj_sub <- subset(
+  x = obj,
+  subset = nCount_ATAC > 100 &
+    nCount_ATAC < 25000 &
+    nFeature_ATAC > 175 &
+    nFeature_ATAC < 20000 &
+    FRiP > 0.25)
+  
+  
+  #Store in list, using sample ID as name
+  seurat_list_sub[[sample]] <- seurat_obj_sub
+}
+seurat_list_sub
+#save objects as needed.
+saveRDS(seurat_list_sub[["GEL_BS_BO"]], "/scratch/ac05869/gelsemium_sc/seurat_data/GEL_BS_BO_sub_ATAC.RDS")
+saveRDS(seurat_list_sub[["GEL_BT_BP"]], "/scratch/ac05869/gelsemium_sc/seurat_data/GEL_BT_BP_sub_ATAC.RDS")
+```
+
+## Load in data if picking up from here
+
+If needed, load in saved subsetted objs
+```{r}
+#call the samples again if needed
+atac_samples <- c("GEL_BS_BO", "GEL_BT_BP")
+
+seurat_list_sub <- list()
+
+for (sample in atac_samples) {
+  
+  data_dir = "/scratch/ac05869/gelsemium_sc/seurat_data/"
+  
+  seurat_obj_path = paste0(data_dir,sample,"_sub_ATAC.RDS")
+  
+  seurat_obj <- readRDS(seurat_obj_path)
+  
+  #Store in list, using sample ID as name
+  seurat_list_sub[[sample]] <- seurat_obj
+}
+```
+
+
+##Normalize, find top features, perform dimensional reduction to prepare assays for integration.
+```{r}
+#make an empty list to save the normalized data
+seurat_norm <- list()
+
+for (sample in atac_samples) {
+  
+  obj <- seurat_list_sub[[sample]]
+  
+  #set default assay to ATAC
+  DefaultAssay(obj) <- "ATAC"
+  
+  #Normalize the data with TFIDF
+  ##normalizes across cells and across peaks to account for sequence depth diff.s and to give higher values to rarer peaks. 
+  obj <- RunTFIDF(obj)
+  
+  #Find top features
+  ##Not like GEX where we can find highly variable features, because ATAC data is not that dynamic. We want to filter out features present in   less than n cells.
+  ##min.cutoff specifies the minimum percentile, selecting the 95% most common features. This can be changed to whatever you like.
+  obj <- FindTopFeatures(obj, min.cutoff = 'q5')
+  
+  #Perform linear dimensional reduction
+  ##returns a reduced dimensional representation of the data, analogous to PCA
+  obj <- RunSVD(obj)
+  
+    #Store in list, using sample ID as name
+  seurat_norm[[sample]] <- obj
+}
+
+#Generate individual objects to be able to find integration anchors
+Leaf_R1_ATAC <- seurat_norm[["GEL_BS_BO"]]
+Leaf_R2_ATAC <- seurat_norm[["GEL_BT_BP"]]
+
+#clean up env
+rm(seurat_norm, seurat_list_sub, obj, seurat_obj)
+```
+
+##Integrate ATAC Assays
+```{r}
+#generate an object list
+obj_list <- list(Leaf_R1_ATAC, Leaf_R2_ATAC)
+
+#Find integration anchors
+anchors <- FindIntegrationAnchors(
+  object.list = obj_list,
+  reduction = "rlsi",
+  dims = 2:30
+)
+
+#Integrate (this step takes forever!)
+integrated_ATAC <- IntegrateData(anchorset = anchors, dims = 2:30)
+
+#check and make sure the integrated object looks correct
+integrated_ATAC
+
+#save this integrated object for later on
+saveRDS(integrated_ATAC, "/scratch/ac05869/gelsemium_sc/seurat_data/GEL_leaf_ATAC_integrated_8Aug26.RDS")
+```
+
+#Step 3: Find cells with high quality GEX and ATAC data
+
+##Get an intersection of cell barcodes from GEX and ATAC
+```{r}
+#Add columns to the ATAC integrated obj's metadata layer. Drop the suffixes for the atac cb to be able to match with the GEX cb.
+integrated_ATAC@meta.data <- integrated_ATAC@meta.data %>% 
+  mutate(cell.bc = row.names(.)) %>% 
+  mutate(cell.bc.2 = str_remove(cell.bc, "-1"))
+
+#Generate a list of shared barcodes between the ATAC and GEX data
+shared.cells.meta <- integrated_ATAC@meta.data %>% 
+  filter(cell.bc.2 %in% Cells(integrated_GEX))
+
+#Check how many cells with high quality GEX and ATAC data there are. 
+dim(shared.cells.meta)
+#[1] 6675   11
+```
+
+##Filter the ATAC and GEX data to get the same number of nuclei for each assay to be able to combine 
+```{r}
+#subset cells in the ATAC integrated obj by cell barcodes (note that after this the cell names will look like CB-1_1)
+combined.atac_sub <- subset(
+  x = integrated_ATAC,
+  cells = row.names(shared.cells.meta))
+
+#check number of cells 
+combined.atac_sub
+
+#An object of class Seurat 
+#66374 features across 6675 samples within 2 assays 
+#Active assay: integrated (33187 features, 33187 variable features)
+# 1 layer present: data
+# 1 other assay present: ATAC
+
+#subset cells in the GEX integrated obj by cell barcodes (note that after this the cb will look like CB_1)
+combined.gex_sub <- subset(
+  x = integrated_GEX,
+  cells = row.names(shared.cells.meta) %>%
+    str_remove("-1")
+)
+
+#check number of cells 
+combined.gex_sub
+
+#An object of class Seurat 
+#24390 features across 6675 samples within 2 assays 
+#Active assay: RNA (21390 features, 3000 variable features)
+# 3 layers present: scale.data, data, counts
+# 1 other assay present: integrated
+# 2 dimensional reductions calculated: pca, umap
+
+#rename cells in the ATAC assay to be able to merge! 
+combined.atac_sub_renamed <- RenameCells(combined.atac_sub, new.names = str_remove(string = Cells(combined.atac_sub), pattern="-1"))
+
+#check and make sure the string has been properly removed from atac bc
+head(Cells(combined.atac_sub_renamed))
+tail(Cells(combined.atac_sub_renamed))
+```
+
+##Add GEX and ATAC Objects into one Seurat object
+```{r}
+#Set the filtered GEX data to a new name that will be the multiome obj
+leaf_multiome <- combined.gex_sub
+
+#set default assay of this multiome obj to GEX
+DefaultAssay(leaf_multiome) <- "RNA"
+
+#set the default assay of the ATAC data to ATAC
+DefaultAssay(combined.atac_sub_renamed) <- "ATAC"
+
+#Set the filtered ATAC data as a new assay within the multiome object under the layer "ATAC"
+leaf_multiome[["ATAC"]] <- combined.atac_sub_renamed[["ATAC"]]  
+
+#confirm obj has both modalities present and the expected number of cells
+leaf_multiome
+
+#An object of class Seurat 
+#57577 features across 6675 samples within 3 assays 
+#Active assay: RNA (21390 features, 3000 variable features)
+# 3 layers present: scale.data, data, counts
+# 2 other assays present: integrated, ATAC
+# 2 dimensional reductions calculated: pca, umap
+ 
+#save data as needed
+saveRDS(leaf_multiome, "/scratch/ac05869/gelsemium_sc/seurat_data/GEL_leaf_multiome_GEX_ATAC_08Aug26.RDS")
+```
+
+#Step 4: First pass data visualization and cell type annotation
+##load in multiome obj if needed
+```{r}
+#load in multiome obj
+leaf_multiome <- readRDS("/scratch/ac05869/gelsemium_sc/seurat_data/GEL_leaf_multiome_GEX_ATAC_08Aug26.RDS")
+```
+
+##Run UMAP on GEX
+```{r}
+#run SCTranform which normalizes the data, finds highly variable features, then scales the data
+DefaultAssay(leaf_multiome) <- "RNA"
+
+leaf_multiome <- SCTransform(leaf_multiome, verbose = F)
+
+leaf_multiome <- RunPCA(leaf_multiome)
+
+leaf_multiome <- RunUMAP(leaf_multiome, dims = 1:50, reduction.name = 'umap.rna', reduction.key = 'rnaUMAP_', min.dist = 0.01, repulsion.strength = 0.5, n.neighbors = 50, spread = 0.5)
+```
+
+##Run UMAP on ATAC
+```{r}
+#Perform similar normalization, feature identification, and dimensionality reduction as before. 
+DefaultAssay(leaf_multiome) <- "ATAC"
+
+leaf_multiome <- RunTFIDF(leaf_multiome)
+
+leaf_multiome <- FindTopFeatures(leaf_multiome, min.cutoff = 'q10')
+
+leaf_multiome <- RunSVD(leaf_multiome)
+
+leaf_multiome <- RunUMAP(leaf_multiome, reduction = 'lsi', dims = 2:30, reduction.name = "umap.atac", reduction.key = "atacUMAP_", min.dist = 0.001, n.neighbors = 25, spread = 0.5, repulsion.strength = 3)
+```
+
+##Run multimodal WNN analysis
+```{r}
+#This analysis integrates both modalities and learns "weights" for each cell to determine how important each modality is to each cell. It can then find neighbors of cells with similar weights across modalities and can help improve the resolution of cell states.  
+
+leaf_multiome <- FindMultiModalNeighbors(leaf_multiome, reduction.list = list("pca", "lsi"), dims.list = list(1:50, 2:50))
+
+leaf_multiome <- RunUMAP(leaf_multiome, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_", min.dist = 0.01, repulsion.strength = 0.5, n.neighbors = 50, spread = 0.5)
+
+leaf_multiome <- FindClusters(leaf_multiome, graph.name = "wsnn", algorithm = 3, verbose = F)
+```
+
+##Generate UMAPs by cluster
+```{r}
+p1 <- DimPlot(leaf_multiome, reduction = "umap.rna", label = T, repel = T) + ggtitle("RNA")
+
+p2 <- DimPlot(leaf_multiome, reduction = "umap.atac", label = T, repel = T) + ggtitle("ATAC")
+
+p3 <- DimPlot(leaf_multiome, reduction = "wnn.umap", label = T, repel = T) + ggtitle("WNN")
+
+p1 + p2 + p3 & NoLegend() & theme(plot.title = element_text(hjust= 0.5))
+
+ggsave("/scratch/ac05869/gelsemium_sc/seurat_qc/GEL_leaf_multiome_cluster_UMAPs_8Aug26.svg", width = 18, height = 6, bg = "white")
+```
+
+##Generate UMAPs by library
+```{r}
+#Note that the GEX library info is the default orig identification for the object
+Idents(leaf_multiome) <- "orig.ident"
+
+p1 <- DimPlot(leaf_multiome, reduction = "umap.rna", label = F, repel = T) + ggtitle("RNA")
+
+p2 <- DimPlot(leaf_multiome, reduction = "umap.atac", label = F, repel = T) + ggtitle("ATAC")
+
+p3 <- DimPlot(leaf_multiome, reduction = "wnn.umap", label = F, repel = T) + ggtitle("WNN")
+
+p1 + p2 + p3 & theme(plot.title = element_text(hjust= 0.5))
+
+ggsave("/scratch/ac05869/gelsemium_sc/seurat_qc/GEL_leaf_multiome_library_UMAPs_8Aug26.svg", width = 18, height = 6, bg = "white")
+```
+## Save data
+```{r}
+DefaultAssay(leaf_multiome) <- "RNA"
+Idents(leaf_multiome) <- "seurat_clusters"
+#leaf_multiome@active.ident
+
+#joinlayers
+leaf_multiome <- JoinLayers(leaf_multiome)
+
+saveRDS(leaf_multiome, "/scratch/ac05869/gelsemium_sc/seurat_data/GEL_leaf_multiome_GEX_ATAC_08Aug26.RDS")
+leaf_multiome <- readRDS(file = "/scratch/ac05869/gelsemium_sc/seurat_data/GEL_leaf_multiome_GEX_ATAC_08Aug26.RDS")
+```
+##Annotation data - both nuclear mitochondrial and chloroplast
+```{r}
+repr_gene_models <- read_delim("/work/crblab/ac05869/genomes/gese_mpi_v2/gese_mpi_v2.working_models.repr.gff3",
+                               delim = "\t", col_names = F)
+anno <- read_delim("/work/crblab/ac05869/genomes/gese_mpi_v2/gese_mpi_v2.functional_annotation.txt", col_names = c("gene_ID", "gene_anno"))
+
+repr_models <- repr_gene_models %>% 
+  dplyr::filter(X3 == "mRNA") %>% 
+  dplyr::select(X1, X4, X5, X7, X9) %>% 
+  dplyr::rename(
+    Chr = X1,
+    start = X4,
+    end = X5,
+    strand = X7
+  ) %>%
+  separate(X9, c("ID", "gene_ID", "Parent"), sep = ";") %>%
+  mutate(across(everything(), ~ str_trim(str_replace_all(.x, '"', ''))))%>%
+  mutate(gene_ID = gsub("^Name=", "", gene_ID)) %>%
+  mutate(Parent = gsub("^Parent=", "", Parent))%>%
+  dplyr::select(c(Chr, start, end, strand, gene_ID, Parent)) %>%
+  left_join(anno, by = "gene_ID")
+
+head(repr_models)
+dim(repr_models) #28509
+
+repr_models$Parent <- gsub("_", "-", repr_models$Parent)
+head(repr_models)
+```
+
+## Find Markers
+```{r}
+mpi.leaf.markers <- FindAllMarkers(MPI.leaf.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) #min.pct is the minimum fraction that cells cluster needs to be expressing that gene for it to count. logfc.threshhold is the log-fold change in expression between clusters expressing that gene
+head(mpi.leaf.markers)
+mpi.leaf.markers$gene <- gsub(pattern = "-", replacement = "_", x = mpi.leaf.markers$gene)
+head(mpi.leaf.markers)
+
+mpi.leaf.markers_annotated <- mpi.leaf.markers %>%
+  left_join(mpi_repr_models, by = c("gene" = "Parent")) %>% 
+  group_by(cluster)
+
+head(mpi.leaf.markers_annotated)
+write_delim(mpi.leaf.markers_annotated, "/scratch/ac05869/gelsemium_sc/seurat_data/gese_mpi_v2.leaf_markers_annotated_minpct0.25_minlfc0.25.tsv", delim = "\t")
+#mpi.leaf.markers_annotated <- read_delim("/scratch/ac05869/gelsemium_sc/seurat_data/gese_mpi_v2.leaf_markers_annotated_minpct0.25_minlfc0.25.tsv", delim = "\t")
+```
+
+```{r}
+#find markers
+leaf_multiome_markers <- FindAllMarkers(leaf_multiome, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+head(leaf_multiome_markers)
+leaf_multiome_markers$gene <- gsub(pattern = "-", replacement = "_", x = leaf_multiome_markers$gene)
+
+leaf_multiome_markers_annotated <- leaf_multiome_markers %>%
+  left_join(repr_models, by = c("gene" = "gene_ID")) %>% 
+  select(-Parent) %>%
+  group_by(cluster)
+
+head(leaf_multiome_markers_annotated)
+
+write_delim(leaf_multiome_markers_annotated, "/scratch/ac05869/gelsemium_sc/seurat_data/gese_mpi_v2.leaf_multiome_markers_annotated_minpct0.25_minlfc0.25.tsv", delim = "/t")
+#leaf_multiome_markers_annotated <- read_delim(file = "/scratch/ac05869/gelsemium_sc/gese_mpi_v2.leaf_multiome_markers_annotated_minpct0.25_minlfc0.25.tsv", delim = "/t")
+```
+
+## Find Average Expression
+```{r}
+# replace spaces with underscores '_' so ggplot2 doesn't fail
+orig.levels <- levels(leaf_multiome)
+Idents(leaf_multiome) <- gsub(pattern = " ", replacement = "_", x = Idents(leaf_multiome))
+orig.levels <- gsub(pattern = " ", replacement = "_", x = orig.levels)
+levels(leaf_multiome) <- orig.levels
+cluster.averages <- AverageExpression(leaf_multiome, return.seurat = TRUE)
+head(cluster.averages)
+
+# How can I extract expression matrix
+cluster_avg.data <- as.data.frame(GetAssayData(cluster.averages, layer = "data")[, ])
+cluster_avg.data$gene <- rownames(cluster_avg.data)
+cluster_avg.data$gene <- gsub(pattern = "-", replacement = "_", x = cluster_avg.data$gene)
+head(cluster_avg.data)
+write.table(cluster_avg.data, file = "/scratch/ac05869/gelsemium_sc/seurat_data/gese_mpi_v2.leaf_multiome_cluster_av.norm.counts.tsv", sep = "\t", quote = FALSE)
+
+```
+
+##Anotate clusters
+
+Read in genespace pangenome run to find syntelogs of markers in Arabidopsis
+```{r}
+OG <- read_delim(file = "/work/crblab/ac05869/genespace_gentianales_genomes/results/A.thaliana__v__G.sempervirens.tsv", delim = '\t')
+load(file = "/work/crblab/ac05869/genespace_gentianales_genomes/results/query_pangenes_cro_ref_noArray.rda")
+TAIR <- read_delim(file = "/scratch/ac05869/plob_sc/pathway_analysis/markers/TAIR10_functional_descriptions.txt", delim = "\t")
+
+all_syntelogs <- pangenes2 %>%
+  mutate(
+    across(where(is.list),~ map_chr(.x, ~ paste(.x, collapse = ",")))) %>%
+  separate_rows(A.thaliana, sep = ",") %>%
+  mutate(A.thaliana = trimws(A.thaliana)) %>%
+  select(c(A.thaliana, G.sempervirens, C.roseus))%>%
+  separate_rows(G.sempervirens, sep = ",")
+
+#write_delim(all_syntelogs, file = "/scratch/ac05869/gelsemium_sc/R_output/TAIR10.cro_v3.gese_mpi_v2.syntelogs_pangenes.tsv", delim = "\t")
+all_syntelogs <- read_delim(file = "/scratch/ac05869/gelsemium_sc/R_output/TAIR10.cro_v3.gese_mpi_v2.syntelogs_pangenes.tsv", delim = "\t")
+
+#repr_models$gene_ID <- gsub("\\.\\d+$", "", repr_models$gene_ID)
+#all_syntelogs$G.sempervirens <- gsub("\\.\\d+$", "", all_syntelogs$G.sempervirens)
+
+annotated_syntelogs <- all_syntelogs %>%
+#  left_join(repr_models, by = c("G.sempervirens" = "gene_ID")) %>%
+  left_join(TAIR %>% select(-c(Type, Computational_description)), by = c("A.thaliana"= "Model_name"))
+head(annotated_syntelogs)
+write_delim(annotated_syntelogs, file = "/scratch/ac05869/gelsemium_sc/R_output/TAIR10.cro_v3.gese_mpi_v2.syntelogs_pangenes_annotated.tsv", delim = "\t")
+```
+
+
+```{r}
+#combine with Arabidopsis markers
+markers <- read_delim("/scratch/ac05869/plob_sc/pathway_analysis/markers/Dec2025_compiled_stem_leaf_markers_annotated.tsv", delim = "\t")
+head(markers)
+markers_simple <- markers %>%
+  dplyr::select(c("Cell_type", "Name", "Arabidopsis", "Organ", "Sources")) %>%
+  unique()
+
+#join the list of marker genes with syntelogs
+annotated_syntelogs$A.thaliana <- gsub("\\.\\d+$", "", annotated_syntelogs$A.thaliana)
+
+annotated_syntelogs_markers <- annotated_syntelogs %>%
+  right_join(markers_simple, by = c("A.thaliana" = "Arabidopsis")) %>%
+  filter(!is.na(G.sempervirens))
+
+#Join the marker genes to the single cell gene markers
+leaf_markers_anno <- annotated_syntelogs_markers %>%
+  inner_join(leaf_multiome_markers_annotated %>% select(c("cluster", "gene_ID")), by = c("G.sempervirens" = "gene_ID"))
+
+write_delim(leaf_markers_anno, "/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_markers_annotated_cell-types.csv", delim = ",")
+```
+
+##assign cell types to clusters
+```{r}
+# For performing differential expression after integration, we switch back to the original
+# data
+DefaultAssay(leaf_multiome) <- "RNA"
+
+#This method just adds an extra column to the meta data table 
+leaf_multiome@meta.data <- leaf_multiome@meta.data %>% mutate(cell_type = case_when(
+  seurat_clusters == 0 ~ "Mesophyll",
+    seurat_clusters == 1 ~ "Epidermis",
+    seurat_clusters == 2 ~ "Mesophyll",
+    seurat_clusters == 3 ~ "Mesophyll",
+    seurat_clusters == 4 ~ "Vasculature",
+    seurat_clusters == 5 ~ "IPAP",
+    seurat_clusters == 6 ~ "Mesophyll",
+    seurat_clusters == 7 ~ "Epidermis",
+  seurat_clusters == 8 ~ "Mesophyll",
+  seurat_clusters == 9 ~ "Vasculature",
+  seurat_clusters == 10 ~ "Proliferating",
+    seurat_clusters == 11 ~ "Proliferating",
+    seurat_clusters == 12 ~ "Vasculature",
+  seurat_clusters == 13 ~ "Mesophyll",
+    seurat_clusters == 14 ~ "Proliferating",
+    seurat_clusters == 15 ~ "Epidermis",
+    seurat_clusters == 16 ~ "Guard cell",
+    seurat_clusters == 17 ~ "Mesophyll",
+    seurat_clusters == 18 ~ "Vasculature",
+    seurat_clusters == 19 ~ "Guard cell",
+  seurat_clusters == 20 ~ "IPAP",
+     T ~ "Unannotated"
+ ))
+
+#saveRDS(leaf_multiome, "/scratch/ac05869/gelsemium_sc/seurat_data/GEL_leaf_multiome_annotated.rds")
+leaf_multiome <- readRDS("/scratch/ac05869/gelsemium_sc/seurat_data/GEL_leaf_multiome_annotated.rds")
+```
+
+##get information on number of cells from each library for each cluster
+```{r}
+leaf_multiome@meta.data %>%
+  as.data.frame() %>%
+  dplyr::select(seurat_clusters, orig.ident, cell_type) %>%
+  group_by(seurat_clusters, orig.ident) %>%
+  summarise(cell_count = n()) %>%
+  ungroup() %>% #make stacked bar chart
+  ggplot(aes(fill=orig.ident, y=cell_count, x=seurat_clusters)) + 
+    geom_bar(position="stack", stat="identity") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Paired") +
+  theme_minimal()
+
+ggsave("/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_cluster_barplot.png", bg = "white")
+ggsave("/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_cluster_barplot.svg", bg = "white")
+
+leaf_multiome@meta.data %>%
+  as.data.frame() %>%
+  dplyr::select(seurat_clusters, orig.ident, cell_type) %>%
+  group_by(cell_type, orig.ident) %>%
+  summarise(cell_count = n()) %>%
+  mutate(total_count = sum(cell_count)) %>%
+  ungroup() %>% #make stacked bar chart by tissue type
+  mutate(cell_type = reorder(cell_type, -total_count)) %>%
+  ggplot(aes(fill=orig.ident, y=cell_count, x=cell_type)) + 
+  geom_bar(position="stack", stat="identity") +
+  scale_fill_brewer(palette = "Paired") +
+  theme_minimal()
+
+ggsave("/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_celltype_barplot.png", bg = "white")
+ggsave("/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_celltype_barplot.svg", bg = "white")
+
+```
+# Plot Pathway genes
+```{r}
+path <- read_delim("/scratch/ac05869/gelsemium_sc/gelsemium_sempervirens_discovered_genes.tsv", delim = "\t") %>%
+  mutate(order = row_number())
+
+head(repr_models)
+path$gene_ID <- gsub(pattern = "_", replacement = "-", x = path$gene_ID)
+path$gene_ID <- gsub("\\.\\d+$", "", path$gene_ID)
+
+path <- path %>%
+  left_join(repr_models %>% select(-gene_ID), by = c("gene_ID" = "Parent"))
+head(path)
+rev_path <- path[order(nrow(path):1),]
+```
+
+```{r}
+dotplot_data <- DotPlot(leaf_multiome, features = unique(rev_path$gene_ID))$data
+
+reordered_columns <- dotplot_data %>% 
+  mutate(id = factor(id, levels = c(
+    "0", "2", "3", "6", "8", "13","17", #Mesophyll
+    "1","7", "15", #Epidermis
+    "4","9","12","18", #Vasculature
+    "10", "11","14", #Proliferating 
+    "5", "20", #IPAP
+    "16", "19" #Guard cell
+  ))) %>% 
+  dplyr::filter(is.na(avg.exp.scaled) == F)
+
+p1_nice_df<- reordered_columns %>% 
+  inner_join(rev_path %>% 
+               distinct(gene_ID, .keep_all = T), by = c("features.plot"="gene_ID")) %>%
+  mutate(
+    LocusID = str_sub(Chr, end = -5),
+    LocusID = reorder(LocusID, -order),
+    ylab = paste0(features.plot),  #for plot y axis
+    ylab2 = paste0(gene, ": ", LocusID),  # make this new variable
+    ylab2 = reorder(ylab2, -order),
+    ylab2 = as.factor(ylab2))
+```
+Warning: The following requested variables were not found: Gelse-mpi.v2.2-MPIG027700, Gelse-mpi.v2.1-MPIG034020
+
+GsVAT and GsHYC3O2 not expressed in leaf
+
+```{r}
+p1 <- p1_nice_df %>%
+  ggplot(aes(x = id, y = ylab2)) +
+  geom_point(aes(size = pct.exp, color = avg.exp.scaled)) +
+  scale_color_gradientn(colors = viridis(10, option = "A")[1:9]) +
+  labs(y = "Genes",
+       x = "") +
+  theme_classic() +
+  theme(text = element_text(size = 28, color = "black"),
+        axis.text = element_text(color = "black"),
+        axis.text.y.left = element_text(hjust = 1, face = "bold"),
+        legend.key.height = unit(0.7, "lines"),
+        legend.position = "right",
+        legend.box = "vertical")
+p1
+
+ggsave(file = "/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_pathway_dotplot.png", height = 6, width = 6)
+ggsave(file = "/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_pathway_dotplot.svg", height = 6, width = 6)
+```
+##Annotate dotplot
+```{r}
+#This color pallette can be used with other single-cell dotplot annotations
+my_colors <- c(
+  "Mesophyll"  = brewer.pal(12, "Paired")[1],  # 
+  "Epidermis" = brewer.pal(12, "Paired")[2],  # dark blue
+#  "Protodermal"  = brewer.pal(12, "Paired")[3],  # light green - this cell-type was changed to plain "epidermis"
+  "Proliferating"= brewer.pal(12, "Paired")[4],  # dark green
+  "Cell cycle"= brewer.pal(12, "Paired")[4],  # dark green
+  "Xylem" = brewer.pal(12, "Paired")[5],
+  "Vessel" = brewer.pal(12, "Paired")[5],
+  "Vasculature" = brewer.pal(12, "Paired")[5],
+  "Phloem" = brewer.pal(12, "Paired")[6],
+  "Companion" = brewer.pal(12, "Paired")[6],
+  "Guard cell"       = brewer.pal(12, "Paired")[7],  #
+  "IPAP" = brewer.pal(12, "Paired")[8],  #
+  "Idioblast" = brewer.pal(12, "Paired")[9],
+  "STR+" = brewer.pal(12, "Paired") [10],
+  "Unassigned" = "grey80"
+)
+```
+
+```{r}
+leaf_cell_type_assignment <- data.frame(
+  cluster = c(0:20)
+) %>% 
+  mutate(cell_type = case_when(
+    cluster == 0 ~ "Mesophyll",
+    cluster == 1 ~ "Epidermis",
+    cluster == 2 ~ "Mesophyll",
+    cluster == 3 ~ "Mesophyll",
+    cluster == 4 ~ "Vasculature",
+    cluster == 5 ~ "IPAP",
+    cluster == 6 ~ "Mesophyll",
+    cluster == 7 ~ "Epidermis",
+  cluster == 8 ~ "Mesophyll",
+  cluster == 9 ~ "Vasculature",
+  cluster == 10 ~ "Proliferating",
+    cluster == 11 ~ "Proliferating",
+    cluster == 12 ~ "Vasculature",
+  cluster == 13 ~ "Mesophyll",
+    cluster == 14 ~ "Proliferating",
+    cluster == 15 ~ "Epidermis",
+    cluster == 16 ~ "Guard cell",
+    cluster == 17 ~ "Mesophyll",
+    cluster == 18 ~ "Vasculature",
+    cluster == 19 ~ "Guard cell",
+  cluster == 20 ~ "IPAP",
+    T ~ "Unassigned"
+  )) %>% mutate(cell_type = factor(cell_type, 
+                            levels = c(
+    "Mesophyll", "Epidermis", "Vasculature", "Proliferating", "IPAP", "Guard cell"
+  ))) %>% 
+    mutate(cluster = factor(cluster, levels = c(
+    "0", "2", "3", "6", "8", "13","17", #Mesophyll
+    "1","7", "15", #Epidermis
+    "4","9","12","18", #Vasculature
+    "10", "11","14", #Proliferating 
+    "5", "20", #IPAP
+    "16", "19" #Guard cells
+  )))
+
+Leaf_cell_type_strip <- leaf_cell_type_assignment %>% 
+  ggplot(aes(x = cluster, y = "" )) +
+  geom_tile(aes(fill = cell_type)) +
+  scale_fill_manual(values = my_colors) +
+  guides(fill = guide_legend(nrow = 2)) +
+  labs(fill = "Cell type") +
+  theme_void() +
+  theme(
+    legend.position = "bottom" ,
+    text = element_text(size = 24)
+  )
+
+Leaf_cell_type_strip
+ggsave(file = "/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_cell_strip.svg", height = 1, width = 6)
+ggsave(file = "/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_cell_strip.svg", height = 1, width = 6)
+```
+
+```{r}
+p1_annotated <- wrap_plots(p1,
+          Leaf_cell_type_strip,
+          heights = c(1, 0.05), 
+          widths = c(1), nrow = 2, ncol = 1)
+p1_annotated
+ggsave(file = "/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_pathway_dotplot_annotated.png", height = 8, width = 6)
+ggsave(file = "/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_pathway_dotplot_annotated.svg", height = 8, width = 6)
+```
+
+
+#Step 5: Call peaks for each cell type to detect rare peaks. 
+
+##Create bed files per cell type
+```{r}
+#Set up inputs
+atac_samples <- c("GEL_BS_BO", "GEL_BT_BP")
+data_dir = "/scratch/ac05869/gelsemium_sc/CR-ARC/"
+
+meta <- as.data.frame(leaf_multiome$cell_type) #extract cb and tissue type 
+
+meta <- meta %>% 
+  mutate(CB = row.names(meta)) %>% 
+  mutate(CB = str_replace(CB, "_*[12]", "-1"))
+
+fragment_list <- list()
+
+#path to fragment file. Fragment file contains all of the fragments and where they map to. Analogous to read alignment data for RNA-seq.
+for (sample in atac_samples) {
+
+  fragcounts <- read.table(paste0(data_dir,sample,"/outs/atac_fragments.tsv.gz"), sep = '\t')
+
+  #add column names to the fragment files
+  col_names <- c("chr", "start", "end", "CB", "counts")
+
+  colnames(fragcounts) <- col_names
+  
+  #Now add a column to associate cell type with the cell barcode 
+  meta <- as.data.frame(leaf_multiome$cell_type) #extract cb and tissue type 
+
+  meta <- meta %>% 
+    mutate(CB = row.names(meta)) %>% 
+    mutate(CB = str_replace(CB, "_*[12]", "-1"))
+
+fragcounts_celltypeadded <- fragcounts %>%
+  left_join(meta, by = "CB")
+  
+  #Store in list, using sample ID as name
+  fragment_list[[sample]] <- fragcounts_celltypeadded
+  
+}
+
+#stack the files together into one df
+frag_file_celltypes <- as.data.frame(rbind(fragment_list[["GEL_BS_BO"]], fragment_list[["GEL_BT_BP"]]))
+
+col_names <- c("chr", "start", "end", "CB", "counts", "celltype")
+colnames(frag_file_celltypes) <- col_names
+
+#remove cell barcodes that do not have an assigned cell type, these belong to nuclei that did not pass the QC
+frag_file_celltypes <- frag_file_celltypes %>%
+  filter(celltype != "NA")
+
+#remove any whitespace
+frag_file_celltypes$celltype <- trimws(frag_file_celltypes$celltype)
+
+#save this fragment obj
+saveRDS(frag_file_celltypes, "/scratch/ac05869/gelsemium_sc/seurat_data/GEL_leaf_fragment_file.rds")
+```
+
+##then split df by tissue type and export to call peaks with MACS2. We only need the chr, start and ends for calling peaks with MACS2
+```{r}
+# Define the cell types
+cell_types <- c("Mesophyll", "Epidermis", "Vasculature", "Proliferating", "IPAP", "Guard cell")
+
+# Create a named list of dataframes by filtering and selecting columns for each cell type
+fragments_list <- lapply(cell_types, function(cell_type) {
+    frag_file_celltypes %>%
+    filter(celltype == cell_type) %>%
+    select(c("chr", "start", "end"))
+  })
+
+# Name each element in the list based on the cell type for easy reference
+names(fragments_list) <- cell_types
+
+# Export as BED files:
+lapply(names(fragments_list), function(cell_type) {
+  # Ensure that the file names are valid (e.g., replace spaces with underscores)
+  file_name <- gsub(" ", "_", cell_type)
+  
+  # Export as BED format
+  write.table(fragments_list[[cell_type]], paste0(data_dir,file_name, "_GEL_leaf_fragments.bed"), 
+              sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+})
+
+#make sure to gunzip the fragment files and make indexes!
+```
+> Left off here to call peaks with MACS2
+
+##Compute counts over macs2 cell type specific peaks 
+```{r}
+DefaultAssay(leaf_multiome) <- "ATAC"
+
+#Load in features file (bed format). All of the individual fragment files for each cell type had peaks called by MACS2, then those broadPeaks files were concatenated and merged to get a list of celltype specific peaks. 
+
+peaks.celltype_specific <- read.table(
+  file = "/scratch/ac05869/gelsemium_sc/MACS2/GEL_leaf.celltype_broadPeak.sorted.merged.bed",
+  col.names = c("chr", "start", "end")
+)
+
+#convert to genomic ranges. Necessary for the following step. 
+gr_2 <- makeGRangesFromDataFrame(peaks.celltype_specific)
+```
+
+
+
+```{r}
+#load in the whole fragment object we generated earlier
+frag_file_celltypes <- readRDS("/scratch/ac05869/gelsemium_sc/seurat_data/GEL_leaf_fragment_file.rds")
+#This object didn't end up working for me.
+#
+#Generate a feature matrix usimg the fragment object and the cell-type specific peak set
+macs2_counts <- FeatureMatrix(
+  fragments = Fragments(leaf_multiome), #This differs from Dionne's method, but its what Li does
+  features = gr_2,
+  cells = colnames(leaf_multiome),
+#  sep = c("-", "-"), #may need to change
+  verbose = TRUE
+)
+```
+
+
+```{r}
+# Create a new chromatin assay called MACS2
+leaf_multiome[["MACS2"]] <- CreateChromatinAssay(
+  counts = macs2_counts,
+  fragments = Fragments(leaf_multiome) #Again, this differs from Dionne's method.
+)
+
+DefaultAssay(leaf_multiome) <- "MACS2"
+
+leaf_multiome
+```
+# Compare peaks between MACS2 and ATAC
+```{r}
+granges(leaf_multiome[["ATAC"]]) #GRanges object with 33187 ranges
+#macs2_peaks_granges$name <- NULL
+gr_2 #GRanges object with 52200 ranges and 0 metadata columns
+
+granges(leaf_multiome[["MACS2"]]) #GRanges object with 52200 ranges and 0 metadata columns
+```
+
+
+```{r}
+peaks.celltype_specific %>% 
+  mutate(Length = end - start) %>% 
+  summarise(median = median(Length),
+            mean = mean(Length))
+#491 median
+#657.928 mean
+```
+```{r}
+peaks.celltype_specific %>% 
+  mutate(Length = end - start) %>% 
+  ggplot(aes(x = Length)) +
+  geom_histogram(binwidth = 50, color = "white", 
+                 fill = rgb(180, 62, 68, maxColorValue = 255),
+                 alpha = 0.9) +
+  labs(x = "Length of ATAC peaks (bp)") +
+  theme_classic() +
+  coord_cartesian(xlim = c(1, 1500)) +
+  ggtitle("n = 52200 peaks")
+ggsave(file = "/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_peaks.png", height = 3, width = 4)
+
+
+```
+
+
+
+
+
+# UMAP 
+```{r}
+DefaultAssay(leaf_multiome) <- "MACS2" 
+leaf_multiome <- RunTFIDF(leaf_multiome)
+leaf_multiome <- FindVariableFeatures(leaf_multiome, assay = "MACS2", nfeatures = 5000)
+leaf_multiome <- FindTopFeatures(leaf_multiome, min.cutoff = NULL)
+leaf_multiome <- RunSVD(leaf_multiome)
+leaf_multiome <- RunUMAP(leaf_multiome, reduction = "lsi", 
+                        dims = 2:30, reduction.name = "umap.atac", reduction.key = "atacUMAP_",
+                        min.dist = 0.001, repulsion.strength = 1, n.neighbors = 30, spread = 1)
+
+leaf_multiome <- FindMultiModalNeighbors(
+  leaf_multiome, reduction.list = list("pca", "lsi"), 
+  dims.list = list(1:30, 2:30)
+)
+
+leaf_multiome <- RunUMAP(leaf_multiome, 
+                        nn.name = "weighted.nn", reduction.name = "wnn.umap",
+                        reduction.key = "wnnUMAP_",
+                        min.dist = 0.001, repulsion.strength = 1, n.neighbors = 30, spread = 1,
+                        verbose = F)
+```
+
+
+```{r}
+Multi_RNA_umap <- DimPlot(leaf_multiome, reduction = "umap.rna", 
+                          group.by = "cell_type") +
+  ggtitle("RNA")
+
+Multi_ATAC_umap <- DimPlot(leaf_multiome, reduction = "umap.atac", 
+                          group.by = "cell_type") +
+  ggtitle("ATAC")
+
+Multi_joint_umap <- DimPlot(leaf_multiome, reduction = "wnn.umap", 
+                          group.by = "cell_type") +
+  ggtitle("Joint")
+
+combined_UMAPs <- wrap_plots(
+ Multi_RNA_umap,
+ Multi_ATAC_umap,
+ Multi_joint_umap,
+ nrow = 1, guides = "collect"
+) &
+  scale_color_manual(values = c(brewer.pal(8, "Paired")[2],
+                                brewer.pal(8, "Paired")[7],
+                                brewer.pal(8, "Paired")[8],
+                                brewer.pal(8, "Paired")[1],
+                                brewer.pal(8, "Paired")[4:5])) &
+  theme_void() &
+  theme(
+    legend.position = "bottom",
+    plot.margin = margin(r = 1, l = 1, unit = "lines"),
+    text = element_text(size = 24)
+  ) 
+
+combined_UMAPs
+
+ggsave("/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_multiome_UMAP.svg", height = 3.5, width = 8, bg = "white", units = "in")
+ggsave("/scratch/ac05869/gelsemium_sc/R_output/GEL_leaf_multiome_UMAP.png", height = 3.5, width = 8, bg = "white",units = "in")
+```
+
+```{r}
+saveRDS(leaf_multiome, "/scratch/ac05869/gelsemium_sc/seurat_data/GEL_leaf_multiome_annotated.rds")
+saveRDS(leaf_multiome, "/work/crblab/ac05869/sc_analyses/seurat_object/GEL_MPI_leaf_multiome_annotated.rds")
+
+```

@@ -1,0 +1,10 @@
+1. Make STAR index
+
+2. Get Cell Ranger barcode list
+a. ml CellRanger-ARC/2.0.2
+b. module show CellRanger-ARC/2.0.2
+# Get path to barcodes: /apps/eb/CellRanger-ARC/2.0.2/lib/python/cellranger/barcodes/737K-arc-v1.txt.gz
+
+2. Map RNA-reads using STARsolo
+
+3. 

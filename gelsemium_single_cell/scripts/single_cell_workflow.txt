@@ -1,0 +1,67 @@
+##copy raw sequencing data to my scratch space from xfer node
+
+```
+cd /project/crblab/sequencing_data/UCD.211124.aviti0529B #depends on library
+cp * /scratch/ac05869/KRT_AA_AB_sc #make directory for sc analysis
+```
+
+# Check fastq files by downloading to local space. 
+# Run pipseekeer pipeline
+## Input Reads into PIPseeker protocol for read processing. This does barcode matching and read 2 trimming, as well as outputting a whitelist for starsolo
+# --chemistry V
+# Make $INFILE as list of both library ID's
+
+sbatch --array 1-2 --export=INFILE=/scratch/ac05869/nih/kratom/rawdata/kratom_leaf.txt /home/ac05869/nih/kratom/kratom_leaf_pipseeker.sh
+#merge barcoded_fastqs R1 and R1 pipseeker outputs
+cat barcoded_*_R1.fastq.gz > ${LIB}_all_barcoded_R1.fastq.gz
+cat barcoded_*_R2.fastq.gz > ${LIB}_all_barcoded_R2.fastq.gz
+
+##STARsolo
+#index most current genome
+/home/ac05869/NIH/Single_cell/kratom_star_index.sh
+sbatch /home/ac05869/NIH/Single_cell/mitr_v1_star_index.sh
+
+#map reads to new genome (stem and leaf)
+/home/ac05869/NIH/Single_cell/STAR_alignment.sh
+sbatch --array 1-2 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt ~/NIH/Single_cell/STAR_alignment.sh
+
+#Index BAM output from star
+sbatch --array 1-4 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt /home/ac05869/nih/kratom/samtools_bam_to_bam.bai.sh
+
+## STARsolo CellFiltering (EmptyDrops_CR) algorithm
+
+###method 1 by hand
+cd /scratch/ac05869/nih/kratom/star_results/old_genome/MIT_AH/MIT_AH_Solo.out/GeneFull/raw/
+mkdir data_for_R
+cp features.tsv data_for_R
+cp barcodes.tsv data_for_R
+cp UniqueAndMult-EM.mtx data_for_R
+cd data_for_R
+mv UniqueAndMult-EM.mtx matrix.mtx #nano readme.txt to explain why it was renamed to trick star
+
+interact --mem 20G --cpus-per-task 12 --ntasks 1 --time 02:00:00
+ml STAR/2.7.10b-GCC-11.3.0
+STAR --runMode soloCellFiltering /scratch/ac05869/nih/kratom/star_results/MIT_AI/MIT_AI_Solo.out/GeneFull/raw/data_for_R \
+/scratch/ac05869/nih/kratom/star_results/MIT_AI/MIT_AI_Solo.out/GeneFull/raw/data_for_R/EM_EmptyDrops_Combined/ --soloCellFilter EmptyDrops_CR
+#The “EM_EmptyDrops_Combined” directory we specify will be created and output will be put there
+#Go into the EM_EmptyDrops_Combined directory and gzip everything to be ready for input into Seurat
+gzip *
+
+###method 2 script: do array
+sbatch --array 1-2 --export=INFILE=/scratch/ac05869/KRT_AA_AB_sc/leaf_libs.txt ~/NIH/Single_cell/STAR_CellFiltering.sh
+
+
+#login to Open OnDemand and launch IGV. Load genome, hc_gene_models (gff), and sc-seq .bam file to compare coverage to the gene models. Intron/Exons of gene modesl should match up with splice sites. SNPs can be viewed.
+
+## Analysis in R
+
+#Did not do organelar filtering
+
+
+
+
+
+
+
+
+
